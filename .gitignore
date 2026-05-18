@@ -1,0 +1,45 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+*.egg
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Virtual envs
+.venv/
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Secrets / local config
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+
+# Cache de dados
+.cache/
+data/raw/
+data/processed/
+*.parquet
+*.feather
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Claude Code local settings
+.claude/

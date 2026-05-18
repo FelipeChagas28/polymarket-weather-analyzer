@@ -35,9 +35,10 @@ def render(ctx: AnalysisContext, rows: list[EdgeRow], console: Console | None = 
 
     members = ctx.ensemble.members_daily
     u = "°C" if ctx.unit.upper() == "C" else "°F"
+    url = f"https://polymarket.com/event/{ctx.event_slug}" if ctx.event_slug else ""
     header_lines = [
         f"[bold]{ctx.event_title}[/bold]",
-        f"slug: [cyan]{ctx.event_slug}[/cyan]",
+        f"link: [link={url}]{url}[/link]" if url else "link: [dim]n/a[/dim]",
         f"resolution: [yellow]{ctx.station.resolution_station}[/yellow]  ({ctx.station.display_name})",
         f"target date: [yellow]{ctx.ensemble.target_date.isoformat()}[/yellow]  tz={ctx.station.tz}",
         f"ensemble: [magenta]{ctx.ensemble.n_members}[/magenta] members  "

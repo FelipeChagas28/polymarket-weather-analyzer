@@ -8,6 +8,7 @@ from rich.table import Table
 
 from pwa.analysis.edge import evaluate_bin
 from pwa.analysis.report import AnalysisContext, render
+from pwa.backtest.calibrate import calibrate_city, summarize
 from pwa.models.bias import BiasReport, apply_bias, compute_bias
 from pwa.models.kde import bins_to_probs
 from pwa.polymarket.clob import best_yes_ask_from_market, best_yes_bid_from_market
@@ -148,6 +149,38 @@ def analyze_cmd(
         bias=bias_report,
     )
     render(ctx, rows, console=console)
+
+
+@app.command("calibrate")
+def calibrate_cmd(
+    city: str = typer.Argument(..., help="city_key (ex: nyc, london, miami)"),
+    n: int = typer.Option(30, "--n", help="Número de eventos passados a usar"),
+    lookback: int = typer.Option(60, "--lookback", help="Dias de histórico para bias"),
+) -> None:
+    """Backtest de calibração em mercados de temperatura já resolvidos."""
+    console.print(f"[dim]Calibrando {city} em até {n} eventos resolvidos...[/dim]")
+    points = calibrate_city(city, n=n, lookback_days=lookback)
+    summary = summarize(points)
+
+    table = Table(title=f"Calibração — {city}")
+    table.add_column("Métrica", style="cyan")
+    table.add_column("Valor", justify="right")
+    table.add_row("n eventos avaliados", f"{int(summary['n'])}")
+    table.add_row("Brier médio (multi-bin)", f"{summary['mean_brier']:.4f}")
+    table.add_row("Log-loss médio", f"{summary['mean_log_loss']:.4f}")
+    table.add_row("P(realizado) médio", f"{summary['mean_p_realized']*100:.1f}%")
+    console.print(table)
+
+    if points:
+        console.print("[dim]Eventos individuais:[/dim]")
+        detail = Table(show_lines=False)
+        detail.add_column("date", style="yellow")
+        detail.add_column("realized bin", style="white")
+        detail.add_column("p_model", justify="right", style="cyan")
+        detail.add_column("log-loss", justify="right", style="magenta")
+        for p in sorted(points, key=lambda x: x.target_date, reverse=True)[:20]:
+            detail.add_row(p.target_date, p.realized_bin, f"{p.p_realized*100:.1f}%", f"{p.log_loss:.3f}")
+        console.print(detail)
 
 
 if __name__ == "__main__":

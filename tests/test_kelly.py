@@ -41,10 +41,10 @@ def test_ev_formula():
 
 
 def test_classify_thresholds():
-    # ask=0.3, p=0.4 → edge=0.10, ev=0.4*0.7 - 0.6*0.3 = 0.28-0.18 = 0.10
-    # ev/ask = 0.10/0.30 = 0.333 → STRONG BUY
-    assert classify(edge=0.10, ev=0.10, ask=0.30) == "STRONG BUY"
+    # price=0.3, p=0.4 → edge=0.10, ev=0.4*0.7 - 0.6*0.3 = 0.28-0.18 = 0.10
+    # ev/price = 0.10/0.30 = 0.333 → STRONG BUY
+    assert classify(edge=0.10, ev=0.10, price=0.30) == "STRONG BUY"
     # edge=0.05 → BUY (under 0.08)
-    assert classify(edge=0.05, ev=0.05, ask=0.50) == "BUY"
+    assert classify(edge=0.05, ev=0.05, price=0.50) == "BUY"
     # edge=0.02 → SKIP
-    assert classify(edge=0.02, ev=0.02, ask=0.50) == "SKIP"
+    assert classify(edge=0.02, ev=0.02, price=0.50) == "SKIP"

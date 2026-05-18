@@ -54,19 +54,23 @@ def render(ctx: AnalysisContext, rows: list[EdgeRow], console: Console | None = 
 
     console.print(Panel("\n".join(header_lines), title="Event", border_style="cyan"))
 
-    table = Table(show_lines=False, title="Per-bin analysis")
+    table = Table(show_lines=False, title="Per-bin analysis (best side YES vs NO)")
     table.add_column("Bin", style="white")
     table.add_column("P(model)", justify="right", style="cyan")
-    table.add_column("Ask", justify="right")
-    table.add_column("Bid", justify="right", style="dim")
+    table.add_column("YES ask", justify="right", style="dim")
+    table.add_column("YES bid", justify="right", style="dim")
+    table.add_column("Side", justify="center")
+    table.add_column("Price", justify="right")
     table.add_column("Edge (pp)", justify="right", style="magenta")
     table.add_column("EV", justify="right")
     table.add_column("Kelly (capped)", justify="right", style="yellow")
     table.add_column("Recommendation", justify="center")
 
     for r in rows:
-        ask_s = f"{r.ask:.3f}" if r.ask is not None else "—"
-        bid_s = f"{r.bid:.3f}" if r.bid is not None else "—"
+        ya = f"{r.yes_ask:.3f}" if r.yes_ask is not None else "—"
+        yb = f"{r.yes_bid:.3f}" if r.yes_bid is not None else "—"
+        side_style = "green" if r.side == "YES" else "blue"
+        price_s = f"{r.side_price:.3f}" if r.side_price is not None else "—"
         edge_s = f"{r.edge*100:+.1f}" if r.edge is not None else "—"
         ev_s = f"{r.ev:+.3f}" if r.ev is not None else "—"
         kelly_s = f"{r.kelly.capped*100:.2f}%" if r.kelly is not None else "—"
@@ -74,8 +78,10 @@ def render(ctx: AnalysisContext, rows: list[EdgeRow], console: Console | None = 
         table.add_row(
             r.bin.label,
             f"{r.p_model*100:.1f}%",
-            ask_s,
-            bid_s,
+            ya,
+            yb,
+            f"[{side_style}]{r.side}[/{side_style}]",
+            price_s,
             edge_s,
             ev_s,
             kelly_s,
@@ -86,8 +92,11 @@ def render(ctx: AnalysisContext, rows: list[EdgeRow], console: Console | None = 
 
     buys = [r for r in rows if r.recommendation in ("BUY", "STRONG BUY")]
     if buys:
+        yes_count = sum(1 for r in buys if r.side == "YES")
+        no_count = sum(1 for r in buys if r.side == "NO")
         console.print(
-            f"[bold green]{len(buys)}[/bold green] bin(s) recomendado(s) para compra. "
+            f"[bold green]{len(buys)}[/bold green] bin(s) recomendado(s) "
+            f"([green]YES={yes_count}[/green] · [blue]NO={no_count}[/blue]). "
             f"Tamanho total Kelly sugerido: "
             f"[yellow]{sum(r.kelly.capped for r in buys if r.kelly)*100:.2f}%[/yellow] do bankroll."
         )

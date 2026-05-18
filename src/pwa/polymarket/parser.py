@@ -39,11 +39,15 @@ class EventInfo:
     target_date: date
 
 
+Unit = Literal["F", "C"]
+
+
 @dataclass(frozen=True, slots=True)
 class Bin:
     label: str
     lower: float
     upper: float
+    unit: Unit = "F"
 
     @property
     def is_left_open(self) -> bool:
@@ -116,26 +120,41 @@ def parse_event_title(title: str, end_date_iso: str | None = None) -> EventInfo 
     )
 
 
-BIN_RANGE_RE = re.compile(r"^\s*(?P<lo>-?\d+)\s*-\s*(?P<hi>-?\d+)\s*°?\s*F\s*$", re.IGNORECASE)
-BIN_OR_BELOW_RE = re.compile(r"^\s*(?P<x>-?\d+)\s*°?\s*F\s*or\s*(below|lower)\s*$", re.IGNORECASE)
-BIN_OR_ABOVE_RE = re.compile(r"^\s*(?P<x>-?\d+)\s*°?\s*F\s*or\s*(above|higher)\s*$", re.IGNORECASE)
+BIN_RANGE_RE = re.compile(r"^\s*(?P<lo>-?\d+)\s*-\s*(?P<hi>-?\d+)\s*°?\s*(?P<unit>[FC])\s*$", re.IGNORECASE)
+BIN_SINGLE_RE = re.compile(r"^\s*(?P<x>-?\d+)\s*°?\s*(?P<unit>[FC])\s*$", re.IGNORECASE)
+BIN_OR_BELOW_RE = re.compile(r"^\s*(?P<x>-?\d+)\s*°?\s*(?P<unit>[FC])\s*or\s*(below|lower)\s*$", re.IGNORECASE)
+BIN_OR_ABOVE_RE = re.compile(r"^\s*(?P<x>-?\d+)\s*°?\s*(?P<unit>[FC])\s*or\s*(above|higher)\s*$", re.IGNORECASE)
 
 
 def parse_bin_label(label: str) -> Bin | None:
     if (m := BIN_RANGE_RE.match(label)) is not None:
         lo = float(m.group("lo"))
         hi = float(m.group("hi"))
+        unit = m.group("unit").upper()
         # Closed integer interval [lo, hi] in Polymarket means: lo <= T <= hi.
         # For integration we extend to [lo - 0.5, hi + 0.5] to capture the
-        # measurement-resolution width (Polymarket resolves to nearest integer °F).
-        return Bin(label, lo - 0.5, hi + 0.5)
+        # measurement-resolution width (Polymarket resolves to nearest integer).
+        return Bin(label, lo - 0.5, hi + 0.5, unit)  # type: ignore[arg-type]
     if (m := BIN_OR_BELOW_RE.match(label)) is not None:
         x = float(m.group("x"))
-        return Bin(label, float("-inf"), x + 0.5)
+        unit = m.group("unit").upper()
+        return Bin(label, float("-inf"), x + 0.5, unit)  # type: ignore[arg-type]
     if (m := BIN_OR_ABOVE_RE.match(label)) is not None:
         x = float(m.group("x"))
-        return Bin(label, x - 0.5, float("inf"))
+        unit = m.group("unit").upper()
+        return Bin(label, x - 0.5, float("inf"), unit)  # type: ignore[arg-type]
+    if (m := BIN_SINGLE_RE.match(label)) is not None:
+        x = float(m.group("x"))
+        unit = m.group("unit").upper()
+        return Bin(label, x - 0.5, x + 0.5, unit)  # type: ignore[arg-type]
     return None
+
+
+def detect_unit(bins: list[Bin], default: Unit = "F") -> Unit:
+    units = {b.unit for b in bins}
+    if len(units) == 1:
+        return next(iter(units))
+    return default
 
 
 def parse_event_bins(markets: list[dict]) -> list[tuple[dict, Bin]]:

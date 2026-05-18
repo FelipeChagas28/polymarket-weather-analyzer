@@ -20,6 +20,7 @@ class AnalysisContext:
     station: Station
     ensemble: EnsembleResult
     bias: BiasReport | None
+    unit: str = "F"  # "F" or "C"
 
 
 REC_STYLE = {
@@ -33,19 +34,20 @@ def render(ctx: AnalysisContext, rows: list[EdgeRow], console: Console | None = 
     console = console or Console()
 
     members = ctx.ensemble.members_daily
+    u = "°C" if ctx.unit.upper() == "C" else "°F"
     header_lines = [
         f"[bold]{ctx.event_title}[/bold]",
         f"slug: [cyan]{ctx.event_slug}[/cyan]",
         f"resolution: [yellow]{ctx.station.resolution_station}[/yellow]  ({ctx.station.display_name})",
         f"target date: [yellow]{ctx.ensemble.target_date.isoformat()}[/yellow]  tz={ctx.station.tz}",
         f"ensemble: [magenta]{ctx.ensemble.n_members}[/magenta] members  "
-        f"mean={members.mean():.2f}°F  std={members.std(ddof=1):.2f}°F  "
-        f"min={members.min():.1f}°F  max={members.max():.1f}°F",
+        f"mean={members.mean():.2f}{u}  std={members.std(ddof=1):.2f}{u}  "
+        f"min={members.min():.1f}{u}  max={members.max():.1f}{u}",
     ]
     if ctx.bias is not None and ctx.bias.n_days > 0:
         header_lines.append(
-            f"bias correction: applied [magenta]+{ctx.bias.mean_bias:+.2f}°F[/magenta] "
-            f"(based on {ctx.bias.n_days}d; residual sd={ctx.bias.std_residual:.2f}°F)"
+            f"bias correction: applied [magenta]{ctx.bias.mean_bias:+.2f}{u}[/magenta] "
+            f"(based on {ctx.bias.n_days}d; residual sd={ctx.bias.std_residual:.2f}{u})"
         )
     else:
         header_lines.append("bias correction: [dim]not available[/dim]")

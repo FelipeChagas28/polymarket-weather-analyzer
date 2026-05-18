@@ -13,7 +13,7 @@ from pwa.models.bias import BiasReport, apply_bias, compute_bias
 from pwa.models.kde import bins_to_probs
 from pwa.polymarket.clob import best_yes_ask_from_market, best_yes_bid_from_market
 from pwa.polymarket.gamma import GammaClient, event_markets
-from pwa.polymarket.parser import parse_event_bins, parse_event_title
+from pwa.polymarket.parser import detect_unit, parse_event_bins, parse_event_title
 from pwa.weather.open_meteo import ensemble_forecast
 from pwa.weather.stations import get_station
 
@@ -115,8 +115,14 @@ def analyze_cmd(
         console.print("[red]Nenhum bin reconhecido nos markets do evento.[/red]")
         raise typer.Exit(code=4)
 
-    console.print(f"[dim]Buscando ensemble Open-Meteo para {station.display_name} em {info.target_date}...[/dim]")
-    ens = ensemble_forecast(station.lat, station.lon, info.target_date, station.tz, info.direction)
+    bins = [b for _, b in bin_pairs]
+    unit = detect_unit(bins)
+    unit_label = "°C" if unit == "C" else "°F"
+
+    console.print(
+        f"[dim]Buscando ensemble Open-Meteo para {station.display_name} em {info.target_date} (unit={unit_label})...[/dim]"
+    )
+    ens = ensemble_forecast(station.lat, station.lon, info.target_date, station.tz, info.direction, unit=unit)
 
     bias_report: BiasReport | None = None
     samples = ens.members_daily
@@ -125,14 +131,13 @@ def analyze_cmd(
         try:
             bias_report = compute_bias(
                 station.lat, station.lon, station.tz, info.direction,
-                today=date.today(), lookback_days=lookback,
+                today=date.today(), lookback_days=lookback, unit=unit,
             )
             samples = apply_bias(samples, bias_report)
         except Exception as e:
             console.print(f"[yellow]Bias correction falhou ({type(e).__name__}: {e}); seguindo sem correção.[/yellow]")
             bias_report = None
 
-    bins = [b for _, b in bin_pairs]
     probs = bins_to_probs(samples, bins)
 
     rows = []
@@ -147,6 +152,7 @@ def analyze_cmd(
         station=station,
         ensemble=ens,
         bias=bias_report,
+        unit=unit,
     )
     render(ctx, rows, console=console)
 

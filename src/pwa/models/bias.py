@@ -29,12 +29,13 @@ def compute_bias(
     today: date | None = None,
     lookback_days: int = 60,
     model: str = "gfs_seamless",
+    unit: str = "F",
 ) -> BiasReport:
     today = today or date.today()
     end = today - timedelta(days=1)
     start = end - timedelta(days=lookback_days - 1)
-    observed = observed_daily(lat, lon, start, end, tz, direction)
-    forecast = historical_forecast_daily(lat, lon, start, end, tz, direction, model=model)
+    observed = observed_daily(lat, lon, start, end, tz, direction, unit=unit)
+    forecast = historical_forecast_daily(lat, lon, start, end, tz, direction, model=model, unit=unit)
     common = sorted(set(observed.keys()) & set(forecast.keys()))
     if not common:
         return BiasReport(0, 0.0, 0.0)

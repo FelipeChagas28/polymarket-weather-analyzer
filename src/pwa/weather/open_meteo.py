@@ -64,19 +64,21 @@ def ensemble_forecast(
     tz: str,
     direction: str,
     models: tuple[str, ...] = ENSEMBLE_MODELS,
+    unit: str = "F",
 ) -> EnsembleResult:
     """Fetch ensemble hourly temperature_2m and reduce each member to daily max/min.
 
-    Returns a vector of length n_members containing the daily aggregate (in °F)
-    for the target_date in the local tz.
+    Returns a vector of length n_members containing the daily aggregate
+    (in °F or °C depending on `unit`) for the target_date in the local tz.
     """
     iso = target_date.isoformat()
+    temp_unit = "fahrenheit" if unit.upper() == "F" else "celsius"
     params = {
         "latitude": lat,
         "longitude": lon,
         "hourly": "temperature_2m",
         "models": ",".join(models),
-        "temperature_unit": "fahrenheit",
+        "temperature_unit": temp_unit,
         "timezone": tz,
         "start_date": iso,
         "end_date": iso,
@@ -108,14 +110,16 @@ def observed_daily(
     end: date,
     tz: str,
     direction: str,
+    unit: str = "F",
 ) -> dict[date, float]:
     """Fetch observed daily max/min from ERA5 archive for [start, end] inclusive."""
     var = "temperature_2m_max" if direction == "highest" else "temperature_2m_min"
+    temp_unit = "fahrenheit" if unit.upper() == "F" else "celsius"
     params = {
         "latitude": lat,
         "longitude": lon,
         "daily": var,
-        "temperature_unit": "fahrenheit",
+        "temperature_unit": temp_unit,
         "timezone": tz,
         "start_date": start.isoformat(),
         "end_date": end.isoformat(),
@@ -140,18 +144,20 @@ def historical_forecast_daily(
     tz: str,
     direction: str,
     model: str = "gfs_seamless",
+    unit: str = "F",
 ) -> dict[date, float]:
     """Fetch *archived* model forecasts (single deterministic run) per day in window.
 
     Used as the predicted side of the bias-correction pair (forecast vs observed).
     """
     var = "temperature_2m_max" if direction == "highest" else "temperature_2m_min"
+    temp_unit = "fahrenheit" if unit.upper() == "F" else "celsius"
     params = {
         "latitude": lat,
         "longitude": lon,
         "daily": var,
         "models": model,
-        "temperature_unit": "fahrenheit",
+        "temperature_unit": temp_unit,
         "timezone": tz,
         "start_date": start.isoformat(),
         "end_date": end.isoformat(),

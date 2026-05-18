@@ -1,12 +1,20 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 import typer
 from rich.console import Console
 from rich.table import Table
 
+from pwa.analysis.edge import evaluate_bin
+from pwa.analysis.report import AnalysisContext, render
+from pwa.models.bias import BiasReport, apply_bias, compute_bias
+from pwa.models.kde import bins_to_probs
+from pwa.polymarket.clob import best_yes_ask_from_market, best_yes_bid_from_market
 from pwa.polymarket.gamma import GammaClient, event_markets
+from pwa.polymarket.parser import parse_event_bins, parse_event_title
+from pwa.weather.open_meteo import ensemble_forecast
+from pwa.weather.stations import get_station
 
 app = typer.Typer(add_completion=False, help="Polymarket Weather Analyzer")
 console = Console()
@@ -80,9 +88,66 @@ def list_cmd(
 @app.command("analyze")
 def analyze_cmd(
     event: str = typer.Argument(..., help="ID numérico ou slug do evento"),
+    no_bias: bool = typer.Option(False, "--no-bias", help="Pula correção de viés histórica"),
+    lookback: int = typer.Option(60, "--lookback", help="Dias de histórico para bias correction"),
 ) -> None:
-    """Análise estatística completa de um evento de temperatura. (NOT YET IMPLEMENTED)"""
-    console.print(f"[yellow]TODO: implementar pipeline analítico para {event}[/yellow]")
+    """Análise estatística completa de um evento de temperatura."""
+    with GammaClient() as gamma:
+        ev = gamma.get_event(event)
+
+    title = ev.get("title", "")
+    info = parse_event_title(title, end_date_iso=ev.get("endDate"))
+    if info is None:
+        console.print(f"[red]Não consegui parsear o título: {title!r}[/red]")
+        console.print("[dim]Atualmente só suporto eventos no formato 'Highest/Lowest temperature in CITY on DATE?'.[/dim]")
+        raise typer.Exit(code=2)
+
+    station = get_station(info.city_key)
+    if station is None:
+        console.print(f"[red]Cidade desconhecida: {info.city_raw!r} (key={info.city_key}).[/red]")
+        console.print("[dim]Adicione a estação em src/pwa/weather/stations.py e tente novamente.[/dim]")
+        raise typer.Exit(code=3)
+
+    markets = list(event_markets(ev))
+    bin_pairs = parse_event_bins(markets)
+    if not bin_pairs:
+        console.print("[red]Nenhum bin reconhecido nos markets do evento.[/red]")
+        raise typer.Exit(code=4)
+
+    console.print(f"[dim]Buscando ensemble Open-Meteo para {station.display_name} em {info.target_date}...[/dim]")
+    ens = ensemble_forecast(station.lat, station.lon, info.target_date, station.tz, info.direction)
+
+    bias_report: BiasReport | None = None
+    samples = ens.members_daily
+    if not no_bias:
+        console.print(f"[dim]Calculando bias correction ({lookback}d de histórico)...[/dim]")
+        try:
+            bias_report = compute_bias(
+                station.lat, station.lon, station.tz, info.direction,
+                today=date.today(), lookback_days=lookback,
+            )
+            samples = apply_bias(samples, bias_report)
+        except Exception as e:
+            console.print(f"[yellow]Bias correction falhou ({type(e).__name__}: {e}); seguindo sem correção.[/yellow]")
+            bias_report = None
+
+    bins = [b for _, b in bin_pairs]
+    probs = bins_to_probs(samples, bins)
+
+    rows = []
+    for (market, b), bp in zip(bin_pairs, probs):
+        ask = best_yes_ask_from_market(market)
+        bid = best_yes_bid_from_market(market)
+        rows.append(evaluate_bin(b, bp.p_model, ask, bid))
+
+    ctx = AnalysisContext(
+        event_title=title,
+        event_slug=ev.get("slug", ""),
+        station=station,
+        ensemble=ens,
+        bias=bias_report,
+    )
+    render(ctx, rows, console=console)
 
 
 if __name__ == "__main__":

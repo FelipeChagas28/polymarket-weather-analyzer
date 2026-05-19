@@ -6,8 +6,8 @@ maximizing log-growth is:
 
     f* = (p*(1-ask) - (1-p)*ask) / (1-ask) = (p - ask) / (1 - ask)
 
-We apply a 1/4 multiplier (fractional Kelly) — empirically more robust to
-estimation error in p — and cap at 5% of bankroll per market to avoid
+We apply a 1/8 multiplier (fractional Kelly) — empirically more robust to
+estimation error in p — and cap at 2% of bankroll per bin to avoid
 concentration risk.
 """
 from __future__ import annotations
@@ -25,8 +25,8 @@ class KellySize:
 def fractional_kelly(
     p_model: float,
     ask: float,
-    fraction: float = 0.25,
-    cap: float = 0.05,
+    fraction: float = 0.125,
+    cap: float = 0.02,
 ) -> KellySize:
     if ask <= 0 or ask >= 1:
         return KellySize(0.0, 0.0, 0.0)

@@ -16,17 +16,17 @@ def test_kelly_positive_when_edge():
     k = fractional_kelly(0.60, 0.50)
     # full = (0.60 - 0.50) / (1 - 0.50) = 0.2
     assert k.full_kelly == pytest.approx(0.2)
-    # fractional 1/4 of that
-    assert k.fractional_kelly == pytest.approx(0.05)
-    # cap at 0.05 → exactly hits cap
-    assert k.capped == pytest.approx(0.05)
+    # fractional 1/8 of that
+    assert k.fractional_kelly == pytest.approx(0.025)
+    # 0.025 is below the 2% cap → capped at 0.02
+    assert k.capped == pytest.approx(0.02)
 
 
-def test_kelly_capped_at_5pct():
+def test_kelly_capped_at_2pct():
     k = fractional_kelly(0.90, 0.40)
     # full = 0.5/0.6 ≈ 0.833
-    # frac 1/4 ≈ 0.208 → capped to 0.05
-    assert k.capped == pytest.approx(0.05)
+    # frac 1/8 ≈ 0.104 → capped to 0.02
+    assert k.capped == pytest.approx(0.02)
 
 
 def test_kelly_invalid_prices_return_zero():

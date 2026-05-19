@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timezone
 
 import typer
 from rich.console import Console
 from rich.table import Table
 
+from pwa.analysis.consensus import compute_consensus
 from pwa.analysis.edge import evaluate_bin
 from pwa.analysis.report import AnalysisContext, render
 from pwa.backtest.calibrate import calibrate_city, summarize
@@ -14,7 +16,13 @@ from pwa.models.kde import bins_to_probs
 from pwa.polymarket.clob import best_yes_ask_from_market, best_yes_bid_from_market
 from pwa.polymarket.gamma import GammaClient, event_markets
 from pwa.polymarket.parser import detect_unit, parse_event_bins, parse_event_title
-from pwa.weather.open_meteo import ensemble_forecast
+from pwa.weather.open_meteo import EnsembleResult
+from pwa.weather.sources import (
+    SourceForecast,
+    fetch_open_meteo_ensemble,
+    fetch_open_meteo_per_model,
+    fetch_yr_no,
+)
 from pwa.weather.stations import get_station
 
 app = typer.Typer(add_completion=False, help="Polymarket Weather Analyzer")
@@ -120,9 +128,41 @@ def analyze_cmd(
     unit_label = "°C" if unit == "C" else "°F"
 
     console.print(
-        f"[dim]Buscando ensemble Open-Meteo para {station.display_name} em {info.target_date} (unit={unit_label})...[/dim]"
+        f"[dim]Buscando previsões em paralelo (Open-Meteo ensemble + modelos individuais + yr.no) "
+        f"para {station.display_name} em {info.target_date} (unit={unit_label})...[/dim]"
     )
-    ens = ensemble_forecast(station.lat, station.lon, info.target_date, station.tz, info.direction, unit=unit)
+
+    def _fetch_ens() -> SourceForecast:
+        return fetch_open_meteo_ensemble(station.lat, station.lon, info.target_date, station.tz, info.direction, unit=unit)
+
+    def _fetch_per_model() -> list[SourceForecast]:
+        try:
+            return fetch_open_meteo_per_model(station.lat, station.lon, info.target_date, station.tz, info.direction, unit=unit)
+        except Exception as e:
+            console.print(f"[yellow]Open-Meteo per-model falhou ({type(e).__name__}: {e}); seguindo.[/yellow]")
+            return []
+
+    def _fetch_yr() -> SourceForecast | None:
+        try:
+            return fetch_yr_no(station.lat, station.lon, info.target_date, station.tz, info.direction, unit=unit)
+        except Exception as e:
+            console.print(f"[yellow]yr.no falhou ({type(e).__name__}: {e}); seguindo sem essa fonte.[/yellow]")
+            return None
+
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        fut_ens = pool.submit(_fetch_ens)
+        fut_per = pool.submit(_fetch_per_model)
+        fut_yr = pool.submit(_fetch_yr)
+        ens_source = fut_ens.result()
+        per_model_sources = fut_per.result()
+        yr_source = fut_yr.result()
+
+    ens = EnsembleResult(
+        target_date=ens_source.target_date,
+        direction=info.direction,
+        members_daily=ens_source.samples,
+        n_members=ens_source.n_members,
+    )
 
     bias_report: BiasReport | None = None
     samples = ens.members_daily
@@ -141,10 +181,35 @@ def analyze_cmd(
     probs = bins_to_probs(samples, bins)
 
     rows = []
+    yes_asks: list[float | None] = []
+    yes_bids: list[float | None] = []
+    primary_sides: list[str] = []
     for (market, b), bp in zip(bin_pairs, probs):
         ask = best_yes_ask_from_market(market)
         bid = best_yes_bid_from_market(market)
-        rows.append(evaluate_bin(b, bp.p_model, ask, bid))
+        edge_row = evaluate_bin(b, bp.p_model, ask, bid)
+        rows.append(edge_row)
+        yes_asks.append(ask)
+        yes_bids.append(bid)
+        primary_sides.append(edge_row.side if edge_row.side_price is not None else "—")
+
+    # Build the consensus over all available sources. We feed the *bias-corrected*
+    # ensemble samples to keep the OM-ens column comparable to the primary p_model.
+    consensus_sources: list[SourceForecast] = [
+        SourceForecast(
+            source_name="open-meteo-ensemble",
+            target_date=ens.target_date,
+            samples=samples,
+            is_ensemble=True,
+            n_members=ens.n_members,
+            unit=unit,
+        )
+    ]
+    consensus_sources.extend(per_model_sources)
+    if yr_source is not None:
+        consensus_sources.append(yr_source)
+
+    consensus_rows = compute_consensus(consensus_sources, bins, yes_asks, yes_bids, primary_sides)
 
     ctx = AnalysisContext(
         event_title=title,
@@ -154,7 +219,7 @@ def analyze_cmd(
         bias=bias_report,
         unit=unit,
     )
-    render(ctx, rows, console=console)
+    render(ctx, rows, consensus_rows=consensus_rows, console=console)
 
 
 @app.command("calibrate")

@@ -178,23 +178,22 @@ def analyze_cmd(
             console.print(f"[yellow]Bias correction falhou ({type(e).__name__}: {e}); seguindo sem correção.[/yellow]")
             bias_report = None
 
-    probs = bins_to_probs(samples, bins)
+    om_probs = bins_to_probs(samples, bins)
 
-    rows = []
     yes_asks: list[float | None] = []
     yes_bids: list[float | None] = []
-    primary_sides: list[str] = []
-    for (market, b), bp in zip(bin_pairs, probs):
+    om_only_sides: list[str] = []
+    for (market, b), bp in zip(bin_pairs, om_probs):
         ask = best_yes_ask_from_market(market)
         bid = best_yes_bid_from_market(market)
-        edge_row = evaluate_bin(b, bp.p_model, ask, bid)
-        rows.append(edge_row)
+        # Quick OM-only side determination for conflict detection (not the final recommendation).
+        om_row = evaluate_bin(b, bp.p_model, ask, bid)
         yes_asks.append(ask)
         yes_bids.append(bid)
-        primary_sides.append(edge_row.side if edge_row.side_price is not None else "—")
+        om_only_sides.append(om_row.side if om_row.side_price is not None else "—")
 
     # Build the consensus over all available sources. We feed the *bias-corrected*
-    # ensemble samples to keep the OM-ens column comparable to the primary p_model.
+    # ensemble samples so OM-ens column is comparable to the OM-only baseline.
     consensus_sources: list[SourceForecast] = [
         SourceForecast(
             source_name="open-meteo-ensemble",
@@ -209,7 +208,16 @@ def analyze_cmd(
     if yr_source is not None:
         consensus_sources.append(yr_source)
 
-    consensus_rows = compute_consensus(consensus_sources, bins, yes_asks, yes_bids, primary_sides)
+    consensus_rows = compute_consensus(consensus_sources, bins, yes_asks, yes_bids, om_only_sides)
+
+    # Recommendation table uses CONSENSUS probability as p_model — so a bin only
+    # appears as BUY/STRONG BUY when multiple independent sources agree there is
+    # edge, not when a single biased source (Open-Meteo) inflates the number.
+    rows = []
+    for (market, b), crow in zip(bin_pairs, consensus_rows):
+        ask = best_yes_ask_from_market(market)
+        bid = best_yes_bid_from_market(market)
+        rows.append(evaluate_bin(b, crow.consensus_prob, ask, bid, agreement=crow.agreement))
 
     ctx = AnalysisContext(
         event_title=title,

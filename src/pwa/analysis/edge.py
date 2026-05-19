@@ -43,12 +43,26 @@ def expected_value(p: float, ask: float) -> float:
     return p * (1.0 - ask) - (1.0 - p) * ask
 
 
-def classify(edge: float | None, ev: float | None, price: float | None) -> Recommendation:
+def classify(
+    edge: float | None,
+    ev: float | None,
+    price: float | None,
+    agreement: str | None = None,
+) -> Recommendation:
+    """Classify a bin into STRONG BUY / BUY / SKIP.
+
+    When `agreement` is provided (consensus across multiple sources):
+      - "weak"     → forced SKIP (sources disagree too much to trust the edge)
+      - "moderate" → capped at BUY (no STRONG BUY without strong consensus)
+      - "strong"   → no cap, full classification
+    """
     if edge is None or ev is None or price is None or price <= 0:
+        return "SKIP"
+    if agreement == "weak":
         return "SKIP"
     ev_ratio = ev / price
     if edge >= 0.08 and ev_ratio >= 0.15:
-        return "STRONG BUY"
+        return "BUY" if agreement == "moderate" else "STRONG BUY"
     if edge >= 0.04:
         return "BUY"
     return "SKIP"
@@ -61,11 +75,19 @@ def _eval_side(p: float, price: float) -> tuple[float, float, KellySize]:
     return edge, ev, kelly
 
 
-def evaluate_bin(b: Bin, p_model: float, yes_ask: float | None, yes_bid: float | None) -> EdgeRow:
+def evaluate_bin(
+    b: Bin,
+    p_model: float,
+    yes_ask: float | None,
+    yes_bid: float | None,
+    agreement: str | None = None,
+) -> EdgeRow:
     """Evaluate both sides (YES and NO) and return the row for whichever has the larger edge.
 
     YES side: pay `yes_ask` to win $1 if bin resolves true.
     NO side: pay `1 - yes_bid` to win $1 if bin resolves false (no-arbitrage approximation).
+
+    `agreement` (when given) downgrades the recommendation per `classify`.
     """
     candidates: list[tuple[Side, float, float, float, KellySize]] = []
 
@@ -85,5 +107,5 @@ def evaluate_bin(b: Bin, p_model: float, yes_ask: float | None, yes_bid: float |
     # Pick whichever side has the highest (positive or least-negative) edge.
     best = max(candidates, key=lambda c: c[2])
     side, price, edge, ev, kelly = best
-    rec = classify(edge, ev, price)
+    rec = classify(edge, ev, price, agreement=agreement)
     return EdgeRow(b, p_model, yes_ask, yes_bid, side, price, edge, ev, kelly, rec)

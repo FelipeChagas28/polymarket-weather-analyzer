@@ -128,9 +128,9 @@ def render(
     if consensus_rows:
         _render_consensus(console, consensus_rows)
 
-    table = Table(show_lines=False, title="Per-bin analysis (best side YES vs NO)")
+    table = Table(show_lines=False, title="Recomendações finais (P(consenso) vs preço)")
     table.add_column("Bin", style="white")
-    table.add_column("P(model)", justify="right", style="cyan")
+    table.add_column("P(consenso)", justify="right", style="cyan")
     table.add_column("YES ask", justify="right", style="dim")
     table.add_column("YES bid", justify="right", style="dim")
     table.add_column("Side", justify="center")

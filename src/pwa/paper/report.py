@@ -59,7 +59,7 @@ def render_daily_summary(
                 pnl_cell = f"[red]{_fmt_money(r.profit_loss)}[/red]"
             else:
                 status_cell = "[yellow]VOID[/yellow]"
-                pnl_cell = "[dim]—[/dim]"
+                pnl_cell = "[dim]-[/dim]"
             table.add_row(
                 r.event_slug[:38],
                 r.bin_label,
@@ -95,7 +95,7 @@ def render_daily_summary(
 
 
 def _render_metrics(s: Summary, console: Console) -> None:
-    started_at = "—"  # not stored in Summary; pulled below if useful
+    started_at = "-"  # not stored in Summary; pulled below if useful
     lines = [
         f"[bold]Apostas totais:[/bold] {s.n_won + s.n_lost + s.n_void + s.n_open}  |  "
         f"[bold]Resolvidas:[/bold] {s.n_resolved} ({s.n_won}W/{s.n_lost}L/{s.n_void}V)  |  "
@@ -142,16 +142,16 @@ def _render_suggestions(s: Summary, console: Console) -> None:
 
 def render_full_report(conn: sqlite3.Connection, console: Console, limit: int = 50) -> None:
     s = compute_summary(conn)
-    start_at = pdb.get_state(conn, "started_at") or "—"
+    start_at = pdb.get_state(conn, "started_at") or "-"
     mode = pdb.get_state(conn, "mode") or "auto"
 
     header = (
         f"[bold]Modo:[/bold] {mode}   "
         f"[bold]Iniciado:[/bold] {start_at}\n"
-        f"[bold]Banca:[/bold] {_fmt_money(s.bankroll_start)} → "
+        f"[bold]Banca:[/bold] {_fmt_money(s.bankroll_start)} -> "
         f"[yellow]{_fmt_money(s.bankroll_current)}[/yellow]  "
         f"([magenta]{s.roi_pct:+.1f}%[/magenta])\n"
-        f"[bold]Apostas:[/bold] {s.n_open} abertas · {s.n_won}W / {s.n_lost}L / {s.n_void}V resolvidas"
+        f"[bold]Apostas:[/bold] {s.n_open} abertas | {s.n_won}W / {s.n_lost}L / {s.n_void}V resolvidas"
     )
     console.print(Panel(header, title="Resumo geral do paper-trading", border_style="cyan"))
 
@@ -199,7 +199,7 @@ def render_full_report(conn: sqlite3.Connection, console: Console, limit: int = 
             pnl_str = (
                 f"[{'green' if (b.profit_loss or 0) >= 0 else 'red'}]"
                 f"{_fmt_money(b.profit_loss)}[/]"
-            ) if b.profit_loss is not None else "[dim]—[/dim]"
+            ) if b.profit_loss is not None else "[dim]-[/dim]"
             t.add_row(
                 b.placed_at[:16],
                 b.city_key,
@@ -209,7 +209,7 @@ def render_full_report(conn: sqlite3.Connection, console: Console, limit: int = 
                 _fmt_money(b.stake),
                 b.agreement,
                 f"[{status_color}]{b.status}[/{status_color}]",
-                b.realized_bin or "[dim]—[/dim]",
+                b.realized_bin or "[dim]-[/dim]",
                 pnl_str,
             )
         console.print(t)
@@ -226,6 +226,6 @@ def render_status(conn: sqlite3.Connection, console: Console) -> None:
         f"[bold]Banca:[/bold] [yellow]{_fmt_money(s.bankroll_current)}[/yellow] "
         f"([magenta]{s.roi_pct:+.1f}%[/magenta] vs {_fmt_money(s.bankroll_start)})\n"
         f"[bold]Apostas abertas:[/bold] {open_count}\n"
-        f"[bold]Próxima resolução:[/bold] {next_date or '[dim]—[/dim]'}"
+        f"[bold]Próxima resolução:[/bold] {next_date or '[dim]-[/dim]'}"
     )
     console.print(Panel(body, title="Paper-trading status", border_style="cyan"))

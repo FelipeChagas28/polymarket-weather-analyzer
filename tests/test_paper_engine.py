@@ -97,6 +97,24 @@ def test_strict_mode_drops_non_strong_agreement(tmp_db):
         assert placed[0].bin_label == "A"
 
 
+def test_strongbuy_mode_drops_non_strong_buy(tmp_db):
+    with pdb.session(tmp_db) as conn:
+        pdb.init_state(conn, bankroll=10.0)
+        placed = place_bets_for_event(
+            conn,
+            event_slug="evt-4", event_title="t", city_key="nyc",
+            target_date=date(2026, 5, 20),
+            edge_rows=[
+                _edge_row(bin_label="A", recommendation="STRONG BUY"),
+                _edge_row(bin_label="B", recommendation="BUY"),
+            ],
+            consensus_rows=[_consensus_row("A"), _consensus_row("B")],
+            mode="strongbuy",
+        )
+        assert len(placed) == 1
+        assert placed[0].bin_label == "A"
+
+
 def test_reserved_stake_is_subtracted(tmp_db):
     """Second BUY should be sized off the bankroll minus previously reserved stake."""
     with pdb.session(tmp_db) as conn:

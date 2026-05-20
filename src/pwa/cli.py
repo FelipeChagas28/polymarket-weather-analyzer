@@ -313,13 +313,16 @@ def _db_option() -> typer.Option:
 @paper_app.command("init")
 def paper_init(
     bankroll: float = typer.Option(10.0, "--bankroll", help="Banca inicial em USD"),
-    mode: str = typer.Option("auto", "--mode", help="auto (toda BUY) | strict (só agreement=strong)"),
+    mode: str = typer.Option(
+        "auto", "--mode",
+        help="auto (toda BUY) | strict (só agreement=strong) | strongbuy (só recomendação STRONG BUY)",
+    ),
     db: str = _db_option(),
     force: bool = typer.Option(False, "--force", help="Sobrescreve state existente"),
 ) -> None:
     """Inicializa o banco de paper-trading."""
-    if mode not in ("auto", "strict"):
-        console.print(f"[red]mode deve ser 'auto' ou 'strict' (recebido: {mode!r})[/red]")
+    if mode not in ("auto", "strict", "strongbuy"):
+        console.print(f"[red]mode deve ser 'auto', 'strict' ou 'strongbuy' (recebido: {mode!r})[/red]")
         raise typer.Exit(code=2)
     with pdb.session(db) as conn:
         if pdb.is_initialized(conn) and not force:
@@ -369,11 +372,14 @@ def paper_stop(db: str = _db_option()) -> None:
 def paper_run(
     db: str = _db_option(),
     days: int = typer.Option(2, "--days", help="Janela em dias à frente para incluir eventos"),
-    mode_override: str | None = typer.Option(None, "--mode", help="Sobrescreve o mode salvo (auto|strict)"),
+    mode_override: str | None = typer.Option(None, "--mode", help="Sobrescreve o mode salvo (auto|strict|strongbuy)"),
     no_bias: bool = typer.Option(False, "--no-bias"),
     lookback: int = typer.Option(60, "--lookback"),
 ) -> None:
     """Roda uma sessão diária: resolve apostas vencidas, analisa mercados ativos, coloca novas apostas."""
+    if mode_override is not None and mode_override not in ("auto", "strict", "strongbuy"):
+        console.print(f"[red]--mode deve ser 'auto', 'strict' ou 'strongbuy' (recebido: {mode_override!r})[/red]")
+        raise typer.Exit(code=2)
     with pdb.session(db) as conn:
         if not pdb.is_initialized(conn):
             console.print(f"[yellow]DB em {db} não inicializado. Rode `pwa paper init` primeiro.[/yellow]")
@@ -381,7 +387,7 @@ def paper_run(
         saved_mode = pdb.get_state(conn, "mode") or "auto"
         effective_mode = mode_override or saved_mode
         if saved_mode == "frozen" and mode_override is None:
-            console.print("[yellow]Paper-trading está congelado. Use --mode auto/strict para descongelar nesta rodada.[/yellow]")
+            console.print("[yellow]Paper-trading está congelado. Use --mode auto/strict/strongbuy para descongelar nesta rodada.[/yellow]")
             raise typer.Exit(code=1)
         bankroll_before = pdb.get_bankroll(conn)
 

@@ -57,8 +57,9 @@ def place_bets_for_event(
     """Persist one bet per BUY/STRONG BUY recommendation. Returns list of placed bets.
 
     `mode`:
-      - "auto"  : place every BUY/STRONG BUY surviving the consensus gate.
-      - "strict": place only when agreement == 'strong'.
+      - "auto"     : place every BUY/STRONG BUY surviving the consensus gate.
+      - "strict"   : place only when agreement == 'strong'.
+      - "strongbuy": place only when recommendation == 'STRONG BUY'.
     """
     placed: list[PlacedBet] = []
     consensus_by_label = _consensus_by_label(consensus_rows)
@@ -73,6 +74,8 @@ def place_bets_for_event(
         crow = consensus_by_label.get(er.bin.label)
         agreement = crow.agreement if crow else "unknown"
         if mode == "strict" and agreement != "strong":
+            continue
+        if mode == "strongbuy" and er.recommendation != "STRONG BUY":
             continue
 
         # Stake sizing: Kelly capped, also bounded by available (unreserved) bankroll.

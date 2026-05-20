@@ -103,13 +103,26 @@ pwa paper stop                    # congela o experimento
 
 O DB fica em `~/.pwa/paper.db` (fora do repo). Cada aposta guarda preço de entrada, stake, p_consenso, agreement, e na resolução guarda o `realized_bin` (mesmo se a aposta tiver dado LOSS — assim dá pra ver o quão longe a recomendação ficou).
 
-### Testes sugeridos (paper-trading)
+### Modos de aposta (`--mode`)
 
-Quando o usuário pedir um teste comparativo, execute em paralelo:
+| Modo | Filtro | Uso |
+|---|---|---|
+| `auto` | toda recomendação BUY/STRONG BUY que passa o consensus gate | teste 1 (default) |
+| `strict` | só quando `agreement == strong` (descarta moderate/weak) | alternativa não usada |
+| `strongbuy` | só recomendação `STRONG BUY` (edge ≥ 8pp e EV/ask ≥ 0.15) | teste 2 |
 
-- **Modo strict vs auto**: rodar
+### Testes em andamento (paper-trading)
+
+Rodam **em paralelo**, cada um com banca e DB próprios e isolados — os dois podem conter apostas iguais. Iniciados em 2026-05-20, banca $10 cada. A cada rodada diária, executar os dois:
+
+- **Teste 1 — `auto`** (`~/.pwa/paper.db`):
   ```bash
-  pwa paper run --mode strict --db ~/.pwa/paper_strict.db
+  pwa paper run
   ```
-  em paralelo ao default `pwa paper run`, por 30+ dias, e comparar winrate/ROI. O modo strict só aceita apostas onde o consensus tem `agreement=strong` (descarta `moderate` e `weak`). Hipótese a validar: descartar moderate elimina mais perdas do que ganhos.
+- **Teste 2 — `strongbuy`** (`~/.pwa/paper_strict.db`):
+  ```bash
+  pwa paper run --mode strongbuy --db ~/.pwa/paper_strict.db
+  ```
+
+Comparar winrate/ROI dos dois DBs após 30+ dias. Hipótese do teste 2: concentrar só nas apostas de maior convicção (`STRONG BUY`) rende ROI/winrate melhor que o `auto`, mesmo com bem menos apostas.
 

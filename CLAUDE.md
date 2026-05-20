@@ -79,8 +79,37 @@ src/pwa/
 │   ├── edge.py
 │   ├── kelly.py
 │   └── report.py
-└── backtest/
-    └── calibrate.py
+├── backtest/
+│   └── calibrate.py
+└── paper/
+    ├── db.py               # SQLite schema + CRUD
+    ├── engine.py           # place_bets, resolve_open_bets, summary
+    └── report.py           # rich tables (daily summary + full report)
 tests/
 └── ...
 ```
+
+## Paper-trading mode
+
+O usuário valida a estratégia em paper-trading antes de operar com dinheiro real. Comandos:
+
+```bash
+pwa paper init --bankroll 10      # cria ~/.pwa/paper.db com banca de $10
+pwa paper run                     # rotina diária: resolve apostas vencidas + analisa mercados ativos + coloca novas apostas + balanço
+pwa paper status                  # resumo curto
+pwa paper report                  # relatório completo (P/L por cidade, últimas N apostas)
+pwa paper stop                    # congela o experimento
+```
+
+O DB fica em `~/.pwa/paper.db` (fora do repo). Cada aposta guarda preço de entrada, stake, p_consenso, agreement, e na resolução guarda o `realized_bin` (mesmo se a aposta tiver dado LOSS — assim dá pra ver o quão longe a recomendação ficou).
+
+### Testes sugeridos (paper-trading)
+
+Quando o usuário pedir um teste comparativo, execute em paralelo:
+
+- **Modo strict vs auto**: rodar
+  ```bash
+  pwa paper run --mode strict --db ~/.pwa/paper_strict.db
+  ```
+  em paralelo ao default `pwa paper run`, por 30+ dias, e comparar winrate/ROI. O modo strict só aceita apostas onde o consensus tem `agreement=strong` (descarta `moderate` e `weak`). Hipótese a validar: descartar moderate elimina mais perdas do que ganhos.
+

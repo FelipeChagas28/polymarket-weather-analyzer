@@ -13,6 +13,7 @@ from pwa.analysis.consensus import ConsensusRow, compute_consensus
 from pwa.analysis.edge import EdgeRow, evaluate_bin
 from pwa.analysis.report import AnalysisContext, render
 from pwa.backtest.calibrate import calibrate_city, summarize
+from pwa.cache import get_cached_bias, put_cached_bias
 from pwa.models.bias import BiasReport, apply_bias, compute_bias
 from pwa.models.kde import bins_to_probs
 from pwa.paper import db as pdb
@@ -137,16 +138,25 @@ def run_analysis(
     bias_report: BiasReport | None = None
     samples = ens.members_daily
     if not no_bias:
-        out.print(f"[dim]Calculando bias correction ({lookback}d de histórico)...[/dim]")
-        try:
-            bias_report = compute_bias(
-                station.lat, station.lon, station.tz, info.direction,
-                today=date.today(), lookback_days=lookback, unit=unit,
+        bias_report = get_cached_bias(station.city_key, info.direction, unit)
+        if bias_report is not None:
+            out.print(
+                f"[dim]Bias correction em cache "
+                f"({bias_report.mean_bias:+.2f}{unit_label}, n={bias_report.n_days}d).[/dim]"
             )
+        else:
+            out.print(f"[dim]Calculando bias correction ({lookback}d de histórico)...[/dim]")
+            try:
+                bias_report = compute_bias(
+                    station.lat, station.lon, station.tz, info.direction,
+                    today=date.today(), lookback_days=lookback, unit=unit,
+                )
+                put_cached_bias(station.city_key, info.direction, unit, bias_report)
+            except Exception as e:
+                out.print(f"[yellow]Bias correction falhou ({type(e).__name__}: {e}); seguindo sem correção.[/yellow]")
+                bias_report = None
+        if bias_report is not None:
             samples = apply_bias(samples, bias_report)
-        except Exception as e:
-            out.print(f"[yellow]Bias correction falhou ({type(e).__name__}: {e}); seguindo sem correção.[/yellow]")
-            bias_report = None
 
     om_probs = bins_to_probs(samples, bins)
 

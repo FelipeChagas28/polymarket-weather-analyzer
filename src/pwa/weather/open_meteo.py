@@ -138,7 +138,7 @@ def observed_daily(
         "start_date": start.isoformat(),
         "end_date": end.isoformat(),
     }
-    data = _get(ARCHIVE_URL, params=params)
+    data = _get_optional(ARCHIVE_URL, params=params)
     daily = data.get("daily", {})
     times = daily.get("time", [])
     values = daily.get(var, [])

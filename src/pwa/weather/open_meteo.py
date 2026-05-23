@@ -51,6 +51,20 @@ def _get(url: str, params: dict[str, Any]) -> dict[str, Any]:
         return r.json()
 
 
+@retry(
+    retry=retry_if_exception_type(httpx.HTTPStatusError),
+    stop=stop_after_attempt(2),
+    wait=wait_exponential(multiplier=1, min=1, max=2),
+    reraise=True,
+)
+def _get_optional(url: str, params: dict[str, Any]) -> dict[str, Any]:
+    """Short-timeout GET for best-effort endpoints (bias correction). Fails fast."""
+    with httpx.Client(timeout=5.0) as client:
+        r = client.get(url, params=params)
+        r.raise_for_status()
+        return r.json()
+
+
 def _daily_aggregate(temps_hourly: np.ndarray, direction: str) -> float:
     if direction == "highest":
         return float(np.nanmax(temps_hourly))
@@ -162,7 +176,7 @@ def historical_forecast_daily(
         "start_date": start.isoformat(),
         "end_date": end.isoformat(),
     }
-    data = _get(HISTORICAL_FORECAST_URL, params=params)
+    data = _get_optional(HISTORICAL_FORECAST_URL, params=params)
     daily = data.get("daily", {})
     times = daily.get("time", [])
     values = daily.get(var, [])

@@ -113,16 +113,21 @@ O DB fica em `~/.pwa/paper.db` (fora do repo). Cada aposta guarda preço de entr
 
 ### Testes em andamento (paper-trading)
 
-Rodam **em paralelo**, cada um com banca e DB próprios e isolados — os dois podem conter apostas iguais. Iniciados em 2026-05-20, banca $10 cada. A cada rodada diária, executar os dois:
+Rodam **em paralelo**, cada um com banca e DB próprios e isolados — os três podem conter apostas iguais. Testes 1 e 2 iniciados em 2026-05-20, Teste 3 iniciado em 2026-05-24, banca $10 cada.
 
-- **Teste 1 — `auto`** (`~/.pwa/paper.db`):
-  ```bash
-  pwa paper run
-  ```
-- **Teste 2 — `strongbuy`** (`~/.pwa/paper_strict.db`):
-  ```bash
-  pwa paper run --mode strongbuy --db ~/.pwa/paper_strict.db
-  ```
+Para executar a rotina diária de todos os 3 testes de uma vez:
 
-Comparar winrate/ROI dos dois DBs após 30+ dias. Hipótese do teste 2: concentrar só nas apostas de maior convicção (`STRONG BUY`) rende ROI/winrate melhor que o `auto`, mesmo com bem menos apostas.
+```bash
+pwa paper run
+```
+
+Sem flags, o comando: (a) descobre eventos uma única vez, (b) roda `run_analysis` uma única vez por evento (cache compartilhado entre DBs) e (c) chama resolve+place_bets nos 3 DBs em sequência, cada um aplicando seu próprio modo salvo. Para rodar só um DB específico, passe `--db` ou `--mode` explicitamente.
+
+| Teste | DB | Modo | Hipótese |
+|---|---|---|---|
+| **Teste 1** | `~/.pwa/paper.db` | `auto` (rede ampla) | baseline |
+| **Teste 2** | `~/.pwa/paper_strict.db` | `strongbuy` (filtra por magnitude do edge) | concentrar nas de maior convicção rende ROI/winrate melhor |
+| **Teste 3** | `~/.pwa/paper_agreement.db` | `strict` (filtra por agreement=strong) | apostar só quando os modelos meteorológicos concordam fortemente rende ROI/winrate melhor (eixo ortogonal ao Teste 2: convicção vem da concordância, não da magnitude) |
+
+Comparar winrate/ROI dos três DBs após 30+ dias.
 

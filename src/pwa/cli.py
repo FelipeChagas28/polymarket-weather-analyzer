@@ -378,64 +378,60 @@ def paper_stop(db: str = _db_option()) -> None:
     console.print("[bold yellow]Paper-trading congelado.[/bold yellow]")
 
 
-@paper_app.command("run")
-def paper_run(
-    db: str = _db_option(),
-    days: int = typer.Option(2, "--days", help="Janela em dias à frente para incluir eventos"),
-    mode_override: str | None = typer.Option(None, "--mode", help="Sobrescreve o mode salvo (auto|strict|strongbuy)"),
-    no_bias: bool = typer.Option(False, "--no-bias"),
-    lookback: int = typer.Option(60, "--lookback"),
+# Paper-trading tests run in parallel; default is to execute all three in sequence
+# when `pwa paper run` is invoked without --db or --mode. Order matters only for
+# log readability — DBs are independent.
+DEFAULT_PAPER_DBS: tuple[Path, ...] = (
+    pdb.DEFAULT_DB_PATH,
+    Path.home() / ".pwa" / "paper_strict.db",
+    Path.home() / ".pwa" / "paper_agreement.db",
+)
+
+
+def _fetch_upcoming_events(days: int) -> list[dict]:
+    now = datetime.now(timezone.utc)
+    with GammaClient() as g:
+        all_events = g.list_temperature_events()
+    upcoming: list[dict] = []
+    for ev in all_events:
+        if ev.get("closed"):
+            continue
+        end = _parse_iso(ev.get("endDate"))
+        if end is None:
+            continue
+        delta_days = (end - now).total_seconds() / 86400
+        if 0 <= delta_days <= days:
+            upcoming.append(ev)
+    upcoming.sort(key=lambda e: e.get("endDate") or "")
+    return upcoming
+
+
+def _place_for_db(
+    db: str,
+    mode_override: str | None,
+    analyses: list,
 ) -> None:
-    """Roda uma sessão diária: resolve apostas vencidas, analisa mercados ativos, coloca novas apostas."""
-    if mode_override is not None and mode_override not in ("auto", "strict", "strongbuy"):
-        console.print(f"[red]--mode deve ser 'auto', 'strict' ou 'strongbuy' (recebido: {mode_override!r})[/red]")
-        raise typer.Exit(code=2)
+    """Resolves expired bets and places new bets in `db` using a pre-computed
+    list of `AnalysisResult`. Skips DB if uninitialized or frozen (without
+    --mode override)."""
     with pdb.session(db) as conn:
         if not pdb.is_initialized(conn):
-            console.print(f"[yellow]DB em {db} não inicializado. Rode `pwa paper init` primeiro.[/yellow]")
-            raise typer.Exit(code=1)
+            console.print(f"[yellow]DB em {db} não inicializado. Pulando.[/yellow]")
+            return
         saved_mode = pdb.get_state(conn, "mode") or "auto"
         effective_mode = mode_override or saved_mode
         if saved_mode == "frozen" and mode_override is None:
-            console.print("[yellow]Paper-trading está congelado. Use --mode auto/strict/strongbuy para descongelar nesta rodada.[/yellow]")
-            raise typer.Exit(code=1)
+            console.print(f"[yellow]{db} está congelado. Use --mode para descongelar.[/yellow]")
+            return
         bankroll_before = pdb.get_bankroll(conn)
 
-        # Step 1: resolve any open bets whose target_date is past.
+        console.print(f"[bold cyan]=== {db}  (mode={effective_mode}) ===[/bold cyan]")
         console.print("[dim]Resolvendo apostas vencidas...[/dim]")
         today = date.today()
         resolved = resolve_open_bets(conn, as_of=today)
 
-        # Step 2: list active events in next `days`.
-        now = datetime.now(timezone.utc)
-        with GammaClient() as g:
-            all_events = g.list_temperature_events()
-        upcoming = []
-        for ev in all_events:
-            if ev.get("closed"):
-                continue
-            end = _parse_iso(ev.get("endDate"))
-            if end is None:
-                continue
-            delta_days = (end - now).total_seconds() / 86400
-            if 0 <= delta_days <= days:
-                upcoming.append(ev)
-        upcoming.sort(key=lambda e: e.get("endDate") or "")
-
-        console.print(f"[dim]Analisando {len(upcoming)} eventos que resolvem nos próximos {days}d (mode={effective_mode})...[/dim]")
-
         all_placed = []
-        n_analyzed = 0
-        for ev in upcoming:
-            slug = ev.get("slug", "")
-            try:
-                result = run_analysis(slug, no_bias=no_bias, lookback=lookback)
-            except Exception as e:
-                console.print(f"[yellow]Falha em {slug}: {type(e).__name__}: {e}[/yellow]")
-                continue
-            if result is None:
-                continue
-            n_analyzed += 1
+        for result in analyses:
             placed = place_bets_for_event(
                 conn,
                 event_slug=result.event_slug,
@@ -451,14 +447,51 @@ def paper_run(
         bankroll_after = pdb.get_bankroll(conn)
         pdb.insert_run(
             conn,
-            n_events_analyzed=n_analyzed,
+            n_events_analyzed=len(analyses),
             n_bets_placed=len(all_placed),
             n_bets_resolved=len(resolved),
             bankroll_before=bankroll_before,
             bankroll_after=bankroll_after,
         )
-
         render_daily_summary(conn, resolved=resolved, placed=all_placed, console=console)
+
+
+@paper_app.command("run")
+def paper_run(
+    db: str | None = typer.Option(None, "--db", help="Caminho do SQLite. Se omitido junto com --mode, roda os 3 testes (auto/strongbuy/strict) em sequência."),
+    days: int = typer.Option(2, "--days", help="Janela em dias à frente para incluir eventos"),
+    mode_override: str | None = typer.Option(None, "--mode", help="Sobrescreve o mode salvo (auto|strict|strongbuy)"),
+    no_bias: bool = typer.Option(False, "--no-bias"),
+    lookback: int = typer.Option(60, "--lookback"),
+) -> None:
+    """Roda uma sessão diária. Sem --db/--mode roda os 3 paper-trading tests em sequência."""
+    if mode_override is not None and mode_override not in ("auto", "strict", "strongbuy"):
+        console.print(f"[red]--mode deve ser 'auto', 'strict' ou 'strongbuy' (recebido: {mode_override!r})[/red]")
+        raise typer.Exit(code=2)
+
+    targets: list[tuple[str, str | None]]
+    if db is None and mode_override is None:
+        targets = [(str(p), None) for p in DEFAULT_PAPER_DBS]
+    else:
+        targets = [(db or str(pdb.DEFAULT_DB_PATH), mode_override)]
+
+    upcoming = _fetch_upcoming_events(days)
+    console.print(f"[dim]Analisando {len(upcoming)} eventos que resolvem nos próximos {days}d...[/dim]")
+
+    analyses = []
+    for ev in upcoming:
+        slug = ev.get("slug", "")
+        try:
+            result = run_analysis(slug, no_bias=no_bias, lookback=lookback)
+        except Exception as e:
+            console.print(f"[yellow]Falha em {slug}: {type(e).__name__}: {e}[/yellow]")
+            continue
+        if result is None:
+            continue
+        analyses.append(result)
+
+    for target_db, target_mode in targets:
+        _place_for_db(db=target_db, mode_override=target_mode, analyses=analyses)
 
 
 if __name__ == "__main__":

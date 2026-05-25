@@ -18,11 +18,13 @@ from pwa.models.bias import BiasReport, apply_bias, compute_bias
 from pwa.models.kde import bins_to_probs
 from pwa.paper import db as pdb
 from pwa.paper.engine import (
+    DbRunReport,
+    RunStage,
     compute_summary,
     place_bets_for_event,
     resolve_open_bets,
 )
-from pwa.paper.report import render_daily_summary, render_full_report, render_status
+from pwa.paper.report import render_daily_summary, render_full_report, render_run_report, render_status
 from pwa.polymarket.clob import best_yes_ask_from_market, best_yes_bid_from_market
 from pwa.polymarket.gamma import GammaClient, event_markets
 from pwa.polymarket.parser import detect_unit, parse_event_bins, parse_event_title
@@ -388,10 +390,15 @@ DEFAULT_PAPER_DBS: tuple[Path, ...] = (
 )
 
 
-def _fetch_upcoming_events(days: int) -> list[dict]:
-    now = datetime.now(timezone.utc)
-    with GammaClient() as g:
-        all_events = g.list_temperature_events()
+def _fetch_upcoming_events(days: int) -> tuple[list[dict], RunStage]:
+    """Returns the upcoming-events list and a RunStage describing the fetch."""
+    try:
+        now = datetime.now(timezone.utc)
+        with GammaClient() as g:
+            all_events = g.list_temperature_events()
+    except Exception as e:
+        return [], RunStage(name="Buscar eventos próximos", status="fail",
+                            detail=f"{type(e).__name__}: {e}")
     upcoming: list[dict] = []
     for ev in all_events:
         if ev.get("closed"):
@@ -403,26 +410,38 @@ def _fetch_upcoming_events(days: int) -> list[dict]:
         if 0 <= delta_days <= days:
             upcoming.append(ev)
     upcoming.sort(key=lambda e: e.get("endDate") or "")
-    return upcoming
+    stage = RunStage(
+        name="Buscar eventos próximos",
+        status="ok",
+        detail=f"{len(upcoming)} eventos em até {days}d",
+    )
+    return upcoming, stage
 
 
 def _place_for_db(
     db: str,
     mode_override: str | None,
     analyses: list,
-) -> None:
+) -> DbRunReport:
     """Resolves expired bets and places new bets in `db` using a pre-computed
-    list of `AnalysisResult`. Skips DB if uninitialized or frozen (without
-    --mode override)."""
+    list of `AnalysisResult`. Returns a DbRunReport for the end-of-run summary;
+    sets `ok=False` with a `note` if the DB is uninitialized / frozen / errors."""
+    empty = lambda note, mode="-": DbRunReport(
+        db=db, mode=mode, ok=False, note=note,
+        n_placed_today=0, n_resolved_today=0,
+        n_won_today=0, n_lost_today=0, n_void_today=0,
+        pnl_today=0.0, n_open_now=0,
+        bankroll_before=0.0, bankroll_after=0.0, roi_pct=0.0,
+    )
     with pdb.session(db) as conn:
         if not pdb.is_initialized(conn):
             console.print(f"[yellow]DB em {db} não inicializado. Pulando.[/yellow]")
-            return
+            return empty("não inicializado")
         saved_mode = pdb.get_state(conn, "mode") or "auto"
         effective_mode = mode_override or saved_mode
         if saved_mode == "frozen" and mode_override is None:
             console.print(f"[yellow]{db} está congelado. Use --mode para descongelar.[/yellow]")
-            return
+            return empty("congelado", mode=saved_mode)
         bankroll_before = pdb.get_bankroll(conn)
 
         console.print(f"[bold cyan]=== {db}  (mode={effective_mode}) ===[/bold cyan]")
@@ -455,6 +474,23 @@ def _place_for_db(
         )
         render_daily_summary(conn, resolved=resolved, placed=all_placed, console=console)
 
+        s = compute_summary(conn)
+        n_won = sum(1 for r in resolved if r.status == "won")
+        n_lost = sum(1 for r in resolved if r.status == "lost")
+        n_void = sum(1 for r in resolved if r.status == "void")
+        pnl = sum(r.profit_loss for r in resolved)
+        return DbRunReport(
+            db=db, mode=effective_mode, ok=True, note="",
+            n_placed_today=len(all_placed),
+            n_resolved_today=len(resolved),
+            n_won_today=n_won, n_lost_today=n_lost, n_void_today=n_void,
+            pnl_today=pnl,
+            n_open_now=int(s.n_open),
+            bankroll_before=bankroll_before,
+            bankroll_after=bankroll_after,
+            roi_pct=s.roi_pct,
+        )
+
 
 @paper_app.command("run")
 def paper_run(
@@ -475,23 +511,49 @@ def paper_run(
     else:
         targets = [(db or str(pdb.DEFAULT_DB_PATH), mode_override)]
 
-    upcoming = _fetch_upcoming_events(days)
+    stages: list[RunStage] = []
+    upcoming, fetch_stage = _fetch_upcoming_events(days)
+    stages.append(fetch_stage)
     console.print(f"[dim]Analisando {len(upcoming)} eventos que resolvem nos próximos {days}d...[/dim]")
 
     analyses = []
+    n_failed = 0
     for ev in upcoming:
         slug = ev.get("slug", "")
         try:
             result = run_analysis(slug, no_bias=no_bias, lookback=lookback)
         except Exception as e:
             console.print(f"[yellow]Falha em {slug}: {type(e).__name__}: {e}[/yellow]")
+            n_failed += 1
             continue
         if result is None:
+            n_failed += 1
             continue
         analyses.append(result)
 
+    if not upcoming:
+        analysis_status = "skip"
+        analysis_detail = "nenhum evento na janela"
+    elif n_failed == 0:
+        analysis_status = "ok"
+        analysis_detail = f"{len(analyses)}/{len(upcoming)} ok"
+    elif analyses:
+        analysis_status = "partial"
+        analysis_detail = f"{len(analyses)}/{len(upcoming)} ok, {n_failed} falharam"
+    else:
+        analysis_status = "fail"
+        analysis_detail = f"0/{len(upcoming)} ok, {n_failed} falharam"
+    stages.append(RunStage(
+        name="Análise meteorológica + edge",
+        status=analysis_status,
+        detail=analysis_detail,
+    ))
+
+    db_reports: list[DbRunReport] = []
     for target_db, target_mode in targets:
-        _place_for_db(db=target_db, mode_override=target_mode, analyses=analyses)
+        db_reports.append(_place_for_db(db=target_db, mode_override=target_mode, analyses=analyses))
+
+    render_run_report(console=console, stages=stages, db_reports=db_reports)
 
 
 if __name__ == "__main__":

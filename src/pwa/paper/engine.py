@@ -198,6 +198,33 @@ class Summary:
     by_agreement: dict[str, tuple[int, int]]  # agreement -> (won, lost)
 
 
+@dataclass(frozen=True, slots=True)
+class RunStage:
+    """One step in a `pwa paper run` execution, used by the end-of-run checklist."""
+    name: str
+    status: str  # "ok" | "partial" | "fail" | "skip"
+    detail: str
+
+
+@dataclass(frozen=True, slots=True)
+class DbRunReport:
+    """Per-DB outcome of one `pwa paper run`. Aggregated into the final summary table."""
+    db: str
+    mode: str
+    ok: bool
+    note: str
+    n_placed_today: int
+    n_resolved_today: int
+    n_won_today: int
+    n_lost_today: int
+    n_void_today: int
+    pnl_today: float
+    n_open_now: int
+    bankroll_before: float
+    bankroll_after: float
+    roi_pct: float
+
+
 def compute_summary(conn: sqlite3.Connection) -> Summary:
     start = float(pdb.get_state(conn, "bankroll_start") or 0.0)
     current = pdb.get_bankroll(conn)

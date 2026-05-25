@@ -9,7 +9,7 @@ from rich.panel import Panel
 from rich.table import Table
 
 from pwa.paper import db as pdb
-from pwa.paper.engine import PlacedBet, ResolvedBet, Summary, compute_summary
+from pwa.paper.engine import DbRunReport, PlacedBet, ResolvedBet, RunStage, Summary, compute_summary
 
 
 def _fmt_money(v: float) -> str:
@@ -213,6 +213,104 @@ def render_full_report(conn: sqlite3.Connection, console: Console, limit: int = 
                 pnl_str,
             )
         console.print(t)
+
+
+_STATUS_GLYPH = {
+    "ok": "[green]OK  [/green]",
+    "partial": "[yellow]WARN[/yellow]",
+    "fail": "[red]FAIL[/red]",
+    "skip": "[dim]SKIP[/dim]",
+}
+
+
+def _short_db_name(path: str) -> str:
+    """Last path segment without extension — `~/.pwa/paper_strict.db` -> `paper_strict`."""
+    tail = path.replace("\\", "/").rsplit("/", 1)[-1]
+    if tail.endswith(".db"):
+        tail = tail[:-3]
+    return tail
+
+
+def render_run_report(
+    console: Console,
+    stages: list[RunStage],
+    db_reports: list[DbRunReport],
+) -> None:
+    """Final end-of-run summary: stage checklist + per-DB consolidated table."""
+    if not stages and not db_reports:
+        return
+
+    checklist_lines: list[str] = []
+    for st in stages:
+        glyph = _STATUS_GLYPH.get(st.status, st.status)
+        line = f"{glyph} {st.name}"
+        if st.detail:
+            line += f"  [dim]({st.detail})[/dim]"
+        checklist_lines.append(line)
+
+    for rep in db_reports:
+        status = "ok" if rep.ok else ("skip" if "não inicializado" in rep.note or "congelado" in rep.note else "fail")
+        glyph = _STATUS_GLYPH[status]
+        head = f"{glyph} {_short_db_name(rep.db)}  [dim](mode={rep.mode})[/dim]"
+        if not rep.ok:
+            checklist_lines.append(f"{head}  [dim]{rep.note}[/dim]")
+        else:
+            checklist_lines.append(
+                f"{head}  [dim]+{rep.n_placed_today} criadas, {rep.n_resolved_today} encerradas[/dim]"
+            )
+
+    if checklist_lines:
+        console.print(Panel("\n".join(checklist_lines), title="Checklist da rodada", border_style="cyan"))
+
+    ran = [r for r in db_reports if r.ok]
+    if not ran:
+        return
+
+    # Modo é redundante (já aparece no checklist). Banca/ROI ficam em uma só coluna.
+    t = Table(title="Resumo dos testes", show_lines=False, pad_edge=False, padding=(0, 1))
+    t.add_column("Teste", style="cyan", no_wrap=True)
+    t.add_column("Criadas hoje", justify="right", style="green", no_wrap=True)
+    t.add_column("Encerradas (W/L/V)", justify="center", no_wrap=True)
+    t.add_column("Em aberto", justify="right", no_wrap=True)
+    t.add_column("Banca (ROI)", justify="right", style="yellow", no_wrap=True)
+
+    tot_placed = 0
+    tot_resolved = 0
+    tot_won = 0
+    tot_lost = 0
+    tot_void = 0
+    tot_pnl = 0.0
+    tot_open = 0
+
+    for rep in ran:
+        enc = f"{rep.n_resolved_today} ({rep.n_won_today}/{rep.n_lost_today}/{rep.n_void_today})"
+        roi_color = "green" if rep.roi_pct >= 0 else "red"
+        banca = f"{_fmt_money(rep.bankroll_after)} [{roi_color}]({rep.roi_pct:+.1f}%)[/{roi_color}]"
+        t.add_row(
+            f"{_short_db_name(rep.db)} [dim]({rep.mode})[/dim]",
+            str(rep.n_placed_today),
+            enc,
+            str(rep.n_open_now),
+            banca,
+        )
+        tot_placed += rep.n_placed_today
+        tot_resolved += rep.n_resolved_today
+        tot_won += rep.n_won_today
+        tot_lost += rep.n_lost_today
+        tot_void += rep.n_void_today
+        tot_pnl += rep.pnl_today
+        tot_open += rep.n_open_now
+
+    if len(ran) > 1:
+        t.add_row(
+            "[bold]TOTAL[/bold]",
+            f"[bold]{tot_placed}[/bold]",
+            f"[bold]{tot_resolved} ({tot_won}/{tot_lost}/{tot_void})[/bold]",
+            f"[bold]{tot_open}[/bold]",
+            "",
+        )
+
+    console.print(t)
 
 
 def render_status(conn: sqlite3.Connection, console: Console) -> None:

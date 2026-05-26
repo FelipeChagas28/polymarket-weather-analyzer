@@ -24,6 +24,8 @@ from pwa.paper.engine import (
     place_bets_for_event,
     resolve_open_bets,
 )
+from pwa.paper.analyze import DEFAULT_TESTS, compare_tests, narrative_blocks, summarize_test
+from pwa.paper.pdf_report import render_pdf
 from pwa.paper.report import render_daily_summary, render_full_report, render_run_report, render_status
 from pwa.polymarket.clob import best_yes_ask_from_market, best_yes_bid_from_market
 from pwa.polymarket.gamma import GammaClient, event_markets
@@ -366,6 +368,100 @@ def paper_report(
             console.print(f"[yellow]DB em {db} não inicializado.[/yellow]")
             raise typer.Exit(code=1)
         render_full_report(conn, console, limit=limit)
+
+
+@paper_app.command("analyze")
+def paper_analyze(
+    output: str | None = typer.Option(
+        None, "--output", "-o",
+        help="Caminho do PDF de saída. Default: reports/analise_3_testes_YYYY-MM-DD.pdf",
+    ),
+    db: list[str] = typer.Option(
+        [], "--db",
+        help="Sobrescreve um DB. Pode ser repetido. Sem flag, usa os 3 defaults (paper/strict/agreement).",
+    ),
+    no_pdf: bool = typer.Option(False, "--no-pdf", help="Não gera PDF, só imprime no terminal"),
+) -> None:
+    """Análise comparativa dos 3 testes de paper-trading com geração de PDF."""
+    if db:
+        # Custom DB list: usa rótulos genéricos.
+        tests = tuple(
+            (f"DB {i+1}", Path(p).expanduser(), "custom", f"DB customizado: {p}")
+            for i, p in enumerate(db)
+        )
+    else:
+        tests = DEFAULT_TESTS
+
+    summaries = []
+    for name, path, mode, hyp in tests:
+        s = summarize_test(name, path, mode, hyp)
+        if s is None:
+            console.print(f"[yellow]Pulando {name} ({path}): DB não inicializado.[/yellow]")
+            continue
+        summaries.append(s)
+
+    if not summaries:
+        console.print("[red]Nenhum DB com dados encontrado.[/red]")
+        raise typer.Exit(code=1)
+
+    cmp = compare_tests(summaries)
+    narratives = narrative_blocks(summaries)
+
+    # Resumo terminal
+    table = Table(title="Resumo dos 3 testes — análise consolidada", show_lines=False)
+    table.add_column("Teste", style="cyan")
+    table.add_column("Modo", style="magenta")
+    table.add_column("Total", justify="right")
+    table.add_column("W/L/V", justify="center")
+    table.add_column("Winrate", justify="right")
+    table.add_column("ROI", justify="right")
+    table.add_column("P/L res.", justify="right")
+    table.add_column("Abertas", justify="right")
+    for s in summaries:
+        roi_color = "green" if s.roi_pct >= 0 else "red"
+        pl_color = "green" if s.pl_resolved >= 0 else "red"
+        table.add_row(
+            s.name, s.mode, str(s.n_total),
+            f"{s.n_won}/{s.n_lost}/{s.n_void}",
+            f"{s.winrate*100:.1f}%",
+            f"[{roi_color}]{s.roi_pct:+.1f}%[/{roi_color}]",
+            f"[{pl_color}]{s.pl_resolved:+.2f}[/{pl_color}]",
+            str(s.n_open),
+        )
+    console.print(table)
+
+    console.print(
+        f"[bold]Vencedores:[/bold] winrate={cmp.best_winrate} | ROI={cmp.best_roi} | "
+        f"P/L={cmp.best_pl} | YES={cmp.best_yes_pl} | NO={cmp.best_no_pl}"
+    )
+
+    for s in summaries:
+        n = narratives.get(s.name)
+        if n is None:
+            continue
+        console.print(f"\n[bold cyan]{s.name} ({s.mode})[/bold cyan]")
+        console.print("[bold green]Pontos fortes:[/bold green]")
+        for line in n.strengths:
+            console.print(f"  - {line}")
+        console.print("[bold red]Pontos fracos:[/bold red]")
+        for line in n.weaknesses:
+            console.print(f"  - {line}")
+        console.print("[bold yellow]Observações:[/bold yellow]")
+        for line in n.observations:
+            console.print(f"  - {line}")
+        console.print("[bold magenta]Ajustes sugeridos:[/bold magenta]")
+        for line in n.adjustments:
+            console.print(f"  - {line}")
+
+    if no_pdf:
+        return
+
+    if output is None:
+        today = datetime.now().strftime("%Y-%m-%d")
+        output = f"reports/analise_3_testes_{today}.pdf"
+
+    path = render_pdf(summaries, cmp, narratives, output)
+    console.print(f"[green]PDF gerado em:[/green] {path}")
 
 
 @paper_app.command("stop")

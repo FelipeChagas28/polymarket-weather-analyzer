@@ -588,6 +588,66 @@ def _place_for_db(
         )
 
 
+@paper_app.command("resolve")
+def paper_resolve(
+    db: str | None = typer.Option(
+        None, "--db",
+        help="Caminho do SQLite. Se omitido, roda nos 3 testes em sequência.",
+    ),
+) -> None:
+    """Encerra apostas vencidas sem analisar eventos nem colocar apostas novas."""
+    targets = (
+        [(db, None)]
+        if db is not None
+        else [(str(p), None) for p in DEFAULT_PAPER_DBS]
+    )
+
+    db_reports: list[DbRunReport] = []
+    for target_db, _ in targets:
+        empty = lambda note: DbRunReport(
+            db=target_db, mode="-", ok=False, note=note,
+            n_placed_today=0, n_resolved_today=0,
+            n_won_today=0, n_lost_today=0, n_void_today=0,
+            pnl_today=0.0, n_open_now=0,
+            bankroll_before=0.0, bankroll_after=0.0, roi_pct=0.0,
+        )
+        with pdb.session(target_db) as conn:
+            if not pdb.is_initialized(conn):
+                console.print(f"[yellow]DB em {target_db} não inicializado. Pulando.[/yellow]")
+                db_reports.append(empty("não inicializado"))
+                continue
+
+            saved_mode = pdb.get_state(conn, "mode") or "auto"
+            bankroll_before = pdb.get_bankroll(conn)
+
+            console.print(f"[bold cyan]=== {target_db}  (mode={saved_mode}) ===[/bold cyan]")
+            console.print("[dim]Resolvendo apostas vencidas...[/dim]")
+
+            resolved = resolve_open_bets(conn, as_of=date.today())
+            bankroll_after = pdb.get_bankroll(conn)
+
+            render_daily_summary(conn, resolved=resolved, placed=[], console=console)
+
+            s = compute_summary(conn)
+            n_won = sum(1 for r in resolved if r.status == "won")
+            n_lost = sum(1 for r in resolved if r.status == "lost")
+            n_void = sum(1 for r in resolved if r.status == "void")
+            pnl = sum(r.profit_loss for r in resolved)
+            db_reports.append(DbRunReport(
+                db=target_db, mode=saved_mode, ok=True, note="",
+                n_placed_today=0,
+                n_resolved_today=len(resolved),
+                n_won_today=n_won, n_lost_today=n_lost, n_void_today=n_void,
+                pnl_today=pnl,
+                n_open_now=int(s.n_open),
+                bankroll_before=bankroll_before,
+                bankroll_after=bankroll_after,
+                roi_pct=s.roi_pct,
+            ))
+
+    render_run_report(console=console, stages=[], db_reports=db_reports)
+
+
 @paper_app.command("run")
 def paper_run(
     db: str | None = typer.Option(None, "--db", help="Caminho do SQLite. Se omitido junto com --mode, roda os 3 testes (auto/strongbuy/strict) em sequência."),

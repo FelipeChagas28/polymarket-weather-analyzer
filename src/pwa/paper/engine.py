@@ -86,6 +86,10 @@ def place_bets_for_event(
       - "strongbuy"          : place only when recommendation == 'STRONG BUY'.
       - "strongbuy_priceband": "strongbuy" plus 0.15 <= side_price <= 0.85 (excludes
         extreme-market entries where the implied probability is on the tails).
+      - "strongbuy_minpayoff": "strongbuy" plus (1 - side_price) >= 0.20 (each share
+        must offer at least $0.20 of upside; filters out near-certainty trades).
+      - "strongbuy_evstrict" : "strongbuy" plus ev / side_price >= 0.30 (raises the
+        EV/ask quality bar from the default 0.15; same edge requirement).
     """
     placed: list[PlacedBet] = []
     consensus_by_label = _consensus_by_label(consensus_rows)
@@ -107,6 +111,18 @@ def place_bets_for_event(
             if er.recommendation != "STRONG BUY":
                 continue
             if er.side_price < 0.15 or er.side_price > 0.85:
+                continue
+        if mode == "strongbuy_minpayoff":
+            if er.recommendation != "STRONG BUY":
+                continue
+            if (1.0 - er.side_price) < 0.20:
+                continue
+        if mode == "strongbuy_evstrict":
+            if er.recommendation != "STRONG BUY":
+                continue
+            if er.ev is None or er.side_price <= 0:
+                continue
+            if (er.ev / er.side_price) < 0.30:
                 continue
 
         stake = compute_stake_from_kelly(bankroll, available, er.kelly.capped)

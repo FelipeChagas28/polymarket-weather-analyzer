@@ -329,14 +329,18 @@ def paper_init(
     bankroll: float = typer.Option(10.0, "--bankroll", help="Banca inicial em USD"),
     mode: str = typer.Option(
         "auto", "--mode",
-        help="auto (toda BUY) | strict (só agreement=strong) | strongbuy (só STRONG BUY) | "
-             "strongbuy_priceband (STRONG BUY com 0.15<=preço<=0.85)",
+        help="auto | strict | strongbuy | strongbuy_priceband (STRONG BUY com 0.15<=preço<=0.85) | "
+             "strongbuy_minpayoff (STRONG BUY com (1-preço)>=0.20) | "
+             "strongbuy_evstrict (STRONG BUY com EV/ask>=0.30)",
     ),
     db: str = _db_option(),
     force: bool = typer.Option(False, "--force", help="Sobrescreve state existente"),
 ) -> None:
     """Inicializa o banco de paper-trading."""
-    valid_modes = ("auto", "strict", "strongbuy", "strongbuy_priceband")
+    valid_modes = (
+        "auto", "strict", "strongbuy",
+        "strongbuy_priceband", "strongbuy_minpayoff", "strongbuy_evstrict",
+    )
     if mode not in valid_modes:
         console.print(f"[red]mode deve ser um de {valid_modes} (recebido: {mode!r})[/red]")
         raise typer.Exit(code=2)
@@ -478,7 +482,7 @@ def paper_stop(db: str = _db_option()) -> None:
     console.print("[bold yellow]Paper-trading congelado.[/bold yellow]")
 
 
-# Paper-trading tests run in parallel; default is to execute all four in sequence
+# Paper-trading tests run in parallel; default is to execute all six in sequence
 # when `pwa paper run` is invoked without --db or --mode. Order matters only for
 # log readability — DBs are independent.
 DEFAULT_PAPER_DBS: tuple[Path, ...] = (
@@ -486,6 +490,8 @@ DEFAULT_PAPER_DBS: tuple[Path, ...] = (
     Path.home() / ".pwa" / "paper_strict.db",
     Path.home() / ".pwa" / "paper_agreement.db",
     Path.home() / ".pwa" / "paper_priceband.db",
+    Path.home() / ".pwa" / "paper_minpayoff.db",
+    Path.home() / ".pwa" / "paper_evstrict.db",
 )
 
 
@@ -653,14 +659,17 @@ def paper_resolve(
 
 @paper_app.command("run")
 def paper_run(
-    db: str | None = typer.Option(None, "--db", help="Caminho do SQLite. Se omitido junto com --mode, roda os 4 testes (auto/strongbuy/strict/strongbuy_priceband) em sequência."),
+    db: str | None = typer.Option(None, "--db", help="Caminho do SQLite. Se omitido junto com --mode, roda os 6 testes em sequência."),
     days: int = typer.Option(2, "--days", help="Janela em dias à frente para incluir eventos"),
-    mode_override: str | None = typer.Option(None, "--mode", help="Sobrescreve o mode salvo (auto|strict|strongbuy|strongbuy_priceband)"),
+    mode_override: str | None = typer.Option(None, "--mode", help="Sobrescreve o mode salvo (auto|strict|strongbuy|strongbuy_priceband|strongbuy_minpayoff|strongbuy_evstrict)"),
     no_bias: bool = typer.Option(False, "--no-bias"),
     lookback: int = typer.Option(60, "--lookback"),
 ) -> None:
-    """Roda uma sessão diária. Sem --db/--mode roda os 4 paper-trading tests em sequência."""
-    valid_modes = ("auto", "strict", "strongbuy", "strongbuy_priceband")
+    """Roda uma sessão diária. Sem --db/--mode roda os 6 paper-trading tests em sequência."""
+    valid_modes = (
+        "auto", "strict", "strongbuy",
+        "strongbuy_priceband", "strongbuy_minpayoff", "strongbuy_evstrict",
+    )
     if mode_override is not None and mode_override not in valid_modes:
         console.print(f"[red]--mode deve ser um de {valid_modes} (recebido: {mode_override!r})[/red]")
         raise typer.Exit(code=2)

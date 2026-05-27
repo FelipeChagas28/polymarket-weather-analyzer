@@ -31,13 +31,14 @@ def _edge_row(
     side: str = "YES",
     side_price: float = 0.20,
     kelly_capped: float = 0.02,
+    ev: float = 0.07,
 ) -> EdgeRow:
     return EdgeRow(
         bin=_bin(bin_label),
         p_model=0.35,
         yes_ask=0.20, yes_bid=0.18,
         side=side, side_price=side_price,
-        edge=0.15, ev=0.07,
+        edge=0.15, ev=ev,
         kelly=KellySize(full_kelly=0.18, fractional_kelly=0.023, capped=kelly_capped),
         recommendation=recommendation,
     )
@@ -168,6 +169,96 @@ def test_strongbuy_priceband_includes_band_edges(tmp_db):
             mode="strongbuy_priceband",
         )
         assert len(placed) == 2
+
+
+def test_strongbuy_minpayoff_accepts_when_upside_high(tmp_db):
+    """STRONG BUY with (1 - side_price) >= 0.20 should pass."""
+    with pdb.session(tmp_db) as conn:
+        pdb.init_state(conn, bankroll=10.0)
+        placed = place_bets_for_event(
+            conn,
+            event_slug="evt-mp-1", event_title="t", city_key="nyc",
+            target_date=date(2026, 5, 27),
+            edge_rows=[_edge_row(recommendation="STRONG BUY", side_price=0.50)],
+            consensus_rows=[_consensus_row()],
+            mode="strongbuy_minpayoff",
+        )
+        assert len(placed) == 1
+
+
+def test_strongbuy_minpayoff_rejects_near_certainty(tmp_db):
+    """side_price >= 0.80 → upside < $0.20 → skip. Plain BUY at 0.50 also skipped."""
+    with pdb.session(tmp_db) as conn:
+        pdb.init_state(conn, bankroll=10.0)
+        placed = place_bets_for_event(
+            conn,
+            event_slug="evt-mp-2", event_title="t", city_key="nyc",
+            target_date=date(2026, 5, 27),
+            edge_rows=[
+                _edge_row(bin_label="EXPENSIVE", recommendation="STRONG BUY", side_price=0.85),
+                _edge_row(bin_label="EXACT_LIMIT", recommendation="STRONG BUY", side_price=0.81),
+                _edge_row(bin_label="WEAK_REC",   recommendation="BUY",        side_price=0.40),
+            ],
+            consensus_rows=[
+                _consensus_row("EXPENSIVE"),
+                _consensus_row("EXACT_LIMIT"),
+                _consensus_row("WEAK_REC"),
+            ],
+            mode="strongbuy_minpayoff",
+        )
+        assert placed == []
+
+
+def test_strongbuy_minpayoff_boundary_behavior(tmp_db):
+    """0.79 (upside 0.21) accepted; 0.81 (upside 0.19) rejected."""
+    with pdb.session(tmp_db) as conn:
+        pdb.init_state(conn, bankroll=10.0)
+        placed = place_bets_for_event(
+            conn,
+            event_slug="evt-mp-3", event_title="t", city_key="nyc",
+            target_date=date(2026, 5, 27),
+            edge_rows=[
+                _edge_row(bin_label="INSIDE",  recommendation="STRONG BUY", side_price=0.79),
+                _edge_row(bin_label="OUTSIDE", recommendation="STRONG BUY", side_price=0.81),
+            ],
+            consensus_rows=[_consensus_row("INSIDE"), _consensus_row("OUTSIDE")],
+            mode="strongbuy_minpayoff",
+        )
+        assert len(placed) == 1
+        assert placed[0].bin_label == "INSIDE"
+
+
+def test_strongbuy_evstrict_accepts_high_ev_ratio(tmp_db):
+    """EV/ask = 0.10/0.20 = 0.50 ≥ 0.30 → pass."""
+    with pdb.session(tmp_db) as conn:
+        pdb.init_state(conn, bankroll=10.0)
+        placed = place_bets_for_event(
+            conn,
+            event_slug="evt-ev-1", event_title="t", city_key="nyc",
+            target_date=date(2026, 5, 27),
+            edge_rows=[_edge_row(recommendation="STRONG BUY", side_price=0.20, ev=0.10)],
+            consensus_rows=[_consensus_row()],
+            mode="strongbuy_evstrict",
+        )
+        assert len(placed) == 1
+
+
+def test_strongbuy_evstrict_rejects_low_ev_ratio(tmp_db):
+    """EV/ask = 0.04/0.20 = 0.20 < 0.30 → skip. Plain BUY same setup → also skip."""
+    with pdb.session(tmp_db) as conn:
+        pdb.init_state(conn, bankroll=10.0)
+        placed = place_bets_for_event(
+            conn,
+            event_slug="evt-ev-2", event_title="t", city_key="nyc",
+            target_date=date(2026, 5, 27),
+            edge_rows=[
+                _edge_row(bin_label="LOW_EV",   recommendation="STRONG BUY", side_price=0.20, ev=0.04),
+                _edge_row(bin_label="WEAK_REC", recommendation="BUY",        side_price=0.20, ev=0.10),
+            ],
+            consensus_rows=[_consensus_row("LOW_EV"), _consensus_row("WEAK_REC")],
+            mode="strongbuy_evstrict",
+        )
+        assert placed == []
 
 
 def test_reserved_stake_is_subtracted(tmp_db):

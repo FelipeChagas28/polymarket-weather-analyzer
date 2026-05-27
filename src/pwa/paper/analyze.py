@@ -43,6 +43,18 @@ DEFAULT_TESTS: tuple[tuple[str, Path, str, str], ...] = (
         "strongbuy_priceband",
         "STRONG BUY com 0.15 ≤ side_price ≤ 0.85 (exclui extremos de mercado).",
     ),
+    (
+        "Teste 5",
+        Path.home() / ".pwa" / "paper_minpayoff.db",
+        "strongbuy_minpayoff",
+        "STRONG BUY com (1 - side_price) ≥ 0.20 (exige upside mínimo de $0.20/share).",
+    ),
+    (
+        "Teste 6",
+        Path.home() / ".pwa" / "paper_evstrict.db",
+        "strongbuy_evstrict",
+        "STRONG BUY com EV/ask ≥ 0.30 (dobra o limiar de qualidade do trade).",
+    ),
 )
 
 

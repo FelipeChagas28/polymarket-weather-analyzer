@@ -25,6 +25,11 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0", "pytest-cov>=5.0"]
+live = [
+    "py-clob-client-v2>=1.0.1",
+    "web3>=7.0",
+    "eth-account>=0.13",
+]
 
 [project.scripts]
 pwa = "pwa.cli:app"

@@ -44,6 +44,30 @@ def reserved_stake(conn: sqlite3.Connection) -> float:
     return float(row["s"])
 
 
+def compute_stake_from_kelly(
+    bankroll: float,
+    available: float,
+    kelly_capped: float,
+    *,
+    hard_cap: float | None = None,
+    min_stake: float = 0.01,
+) -> float:
+    """Stake from Kelly cap, bounded by free bankroll and an optional hard cap.
+
+    Returns 0.0 if the resulting stake would fall below ``min_stake`` — callers
+    treat that as "skip this opportunity". Real-money mode passes ``hard_cap``
+    ($2.00) and ``min_stake=1.00`` (Polymarket's per-order minimum); paper mode
+    keeps the defaults.
+    """
+    stake = bankroll * kelly_capped
+    stake = min(stake, available)
+    if hard_cap is not None:
+        stake = min(stake, hard_cap)
+    if stake < min_stake:
+        return 0.0
+    return stake
+
+
 def place_bets_for_event(
     conn: sqlite3.Connection,
     event_slug: str,
@@ -78,10 +102,8 @@ def place_bets_for_event(
         if mode == "strongbuy" and er.recommendation != "STRONG BUY":
             continue
 
-        # Stake sizing: Kelly capped, also bounded by available (unreserved) bankroll.
-        stake = bankroll * er.kelly.capped
-        stake = min(stake, available)
-        if stake < 0.01:
+        stake = compute_stake_from_kelly(bankroll, available, er.kelly.capped)
+        if stake == 0.0:
             continue
         shares = stake / er.side_price
 

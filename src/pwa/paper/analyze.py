@@ -37,6 +37,12 @@ DEFAULT_TESTS: tuple[tuple[str, Path, str, str], ...] = (
         "strict",
         "Só agreement=strong. Convicção pelo consenso entre fontes meteorológicas.",
     ),
+    (
+        "Teste 4",
+        Path.home() / ".pwa" / "paper_priceband.db",
+        "strongbuy_priceband",
+        "STRONG BUY com 0.15 ≤ side_price ≤ 0.85 (exclui extremos de mercado).",
+    ),
 )
 
 

@@ -115,6 +115,61 @@ def test_strongbuy_mode_drops_non_strong_buy(tmp_db):
         assert placed[0].bin_label == "A"
 
 
+def test_strongbuy_priceband_accepts_inside_band(tmp_db):
+    """STRONG BUY with 0.15 <= side_price <= 0.85 should pass."""
+    with pdb.session(tmp_db) as conn:
+        pdb.init_state(conn, bankroll=10.0)
+        placed = place_bets_for_event(
+            conn,
+            event_slug="evt-pb-1", event_title="t", city_key="nyc",
+            target_date=date(2026, 5, 27),
+            edge_rows=[_edge_row(recommendation="STRONG BUY", side_price=0.40)],
+            consensus_rows=[_consensus_row()],
+            mode="strongbuy_priceband",
+        )
+        assert len(placed) == 1
+
+
+def test_strongbuy_priceband_rejects_outside_band(tmp_db):
+    """Below 0.15 or above 0.85 → skip. Plain BUY inside the band → skip too."""
+    with pdb.session(tmp_db) as conn:
+        pdb.init_state(conn, bankroll=10.0)
+        # Three rows: STRONG BUY too cheap, STRONG BUY too expensive, BUY at a fine price.
+        placed = place_bets_for_event(
+            conn,
+            event_slug="evt-pb-2", event_title="t", city_key="nyc",
+            target_date=date(2026, 5, 27),
+            edge_rows=[
+                _edge_row(bin_label="LOW",  recommendation="STRONG BUY", side_price=0.10),
+                _edge_row(bin_label="HIGH", recommendation="STRONG BUY", side_price=0.90),
+                _edge_row(bin_label="BUY",  recommendation="BUY",        side_price=0.40),
+            ],
+            consensus_rows=[
+                _consensus_row("LOW"), _consensus_row("HIGH"), _consensus_row("BUY"),
+            ],
+            mode="strongbuy_priceband",
+        )
+        assert placed == []
+
+
+def test_strongbuy_priceband_includes_band_edges(tmp_db):
+    """Inclusive bounds: exactly 0.15 and exactly 0.85 are accepted."""
+    with pdb.session(tmp_db) as conn:
+        pdb.init_state(conn, bankroll=10.0)
+        placed = place_bets_for_event(
+            conn,
+            event_slug="evt-pb-3", event_title="t", city_key="nyc",
+            target_date=date(2026, 5, 27),
+            edge_rows=[
+                _edge_row(bin_label="LO_EDGE", recommendation="STRONG BUY", side_price=0.15),
+                _edge_row(bin_label="HI_EDGE", recommendation="STRONG BUY", side_price=0.85),
+            ],
+            consensus_rows=[_consensus_row("LO_EDGE"), _consensus_row("HI_EDGE")],
+            mode="strongbuy_priceband",
+        )
+        assert len(placed) == 2
+
+
 def test_reserved_stake_is_subtracted(tmp_db):
     """Second BUY should be sized off the bankroll minus previously reserved stake."""
     with pdb.session(tmp_db) as conn:

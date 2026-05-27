@@ -81,9 +81,11 @@ def place_bets_for_event(
     """Persist one bet per BUY/STRONG BUY recommendation. Returns list of placed bets.
 
     `mode`:
-      - "auto"     : place every BUY/STRONG BUY surviving the consensus gate.
-      - "strict"   : place only when agreement == 'strong'.
-      - "strongbuy": place only when recommendation == 'STRONG BUY'.
+      - "auto"               : place every BUY/STRONG BUY surviving the consensus gate.
+      - "strict"             : place only when agreement == 'strong'.
+      - "strongbuy"          : place only when recommendation == 'STRONG BUY'.
+      - "strongbuy_priceband": "strongbuy" plus 0.15 <= side_price <= 0.85 (excludes
+        extreme-market entries where the implied probability is on the tails).
     """
     placed: list[PlacedBet] = []
     consensus_by_label = _consensus_by_label(consensus_rows)
@@ -101,6 +103,11 @@ def place_bets_for_event(
             continue
         if mode == "strongbuy" and er.recommendation != "STRONG BUY":
             continue
+        if mode == "strongbuy_priceband":
+            if er.recommendation != "STRONG BUY":
+                continue
+            if er.side_price < 0.15 or er.side_price > 0.85:
+                continue
 
         stake = compute_stake_from_kelly(bankroll, available, er.kelly.capped)
         if stake == 0.0:

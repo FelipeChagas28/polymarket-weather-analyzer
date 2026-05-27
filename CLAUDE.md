@@ -108,26 +108,28 @@ O DB fica em `~/.pwa/paper.db` (fora do repo). Cada aposta guarda preço de entr
 | Modo | Filtro | Uso |
 |---|---|---|
 | `auto` | toda recomendação BUY/STRONG BUY que passa o consensus gate | teste 1 (default) |
-| `strict` | só quando `agreement == strong` (descarta moderate/weak) | alternativa não usada |
+| `strict` | só quando `agreement == strong` (descarta moderate/weak) | teste 3 |
 | `strongbuy` | só recomendação `STRONG BUY` (edge ≥ 8pp e EV/ask ≥ 0.15) | teste 2 |
+| `strongbuy_priceband` | `strongbuy` + `0.15 ≤ side_price ≤ 0.85` (exclui extremos de mercado) | teste 4 |
 
 ### Testes em andamento (paper-trading)
 
-Rodam **em paralelo**, cada um com banca e DB próprios e isolados — os três podem conter apostas iguais. Testes 1 e 2 iniciados em 2026-05-20, Teste 3 iniciado em 2026-05-24, banca $10 cada.
+Rodam **em paralelo**, cada um com banca e DB próprios e isolados — os quatro podem conter apostas iguais. Testes 1 e 2 iniciados em 2026-05-20, Teste 3 em 2026-05-24, Teste 4 em 2026-05-26, banca $10 cada.
 
-Para executar a rotina diária de todos os 3 testes de uma vez:
+Para executar a rotina diária de todos os 4 testes de uma vez:
 
 ```bash
 pwa paper run
 ```
 
-Sem flags, o comando: (a) descobre eventos uma única vez, (b) roda `run_analysis` uma única vez por evento (cache compartilhado entre DBs) e (c) chama resolve+place_bets nos 3 DBs em sequência, cada um aplicando seu próprio modo salvo. Para rodar só um DB específico, passe `--db` ou `--mode` explicitamente.
+Sem flags, o comando: (a) descobre eventos uma única vez, (b) roda `run_analysis` uma única vez por evento (cache compartilhado entre DBs) e (c) chama resolve+place_bets nos 4 DBs em sequência, cada um aplicando seu próprio modo salvo. Para rodar só um DB específico, passe `--db` ou `--mode` explicitamente.
 
 | Teste | DB | Modo | Hipótese |
 |---|---|---|---|
 | **Teste 1** | `~/.pwa/paper.db` | `auto` (rede ampla) | baseline |
 | **Teste 2** | `~/.pwa/paper_strict.db` | `strongbuy` (filtra por magnitude do edge) | concentrar nas de maior convicção rende ROI/winrate melhor |
 | **Teste 3** | `~/.pwa/paper_agreement.db` | `strict` (filtra por agreement=strong) | apostar só quando os modelos meteorológicos concordam fortemente rende ROI/winrate melhor (eixo ortogonal ao Teste 2: convicção vem da concordância, não da magnitude) |
+| **Teste 4** | `~/.pwa/paper_priceband.db` | `strongbuy_priceband` (STRONG BUY + 0.15 ≤ preço ≤ 0.85) | excluir extremos de mercado (preços de cauda têm pouca liquidez e EV teórico mais frágil) rende ROI/winrate melhor que Teste 2 puro |
 
-Comparar winrate/ROI dos três DBs após 30+ dias.
+Comparar winrate/ROI dos quatro DBs após 30+ dias.
 

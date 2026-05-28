@@ -117,7 +117,7 @@ O DB fica em `~/.pwa/paper.db` (fora do repo). Cada aposta guarda preço de entr
 
 ### Testes em andamento (paper-trading)
 
-Rodam **em paralelo**, cada um com banca e DB próprios e isolados — os sete podem conter apostas iguais. Testes 1 e 2 iniciados em 2026-05-20, Teste 3 em 2026-05-24, Teste 4 em 2026-05-26, Testes 5 e 6 em 2026-05-27, Teste 7 em 2026-05-28, banca $10 cada.
+Rodam **em paralelo**, cada um com banca e DB próprios e isolados — os sete podem conter apostas iguais. Testes 1 e 2 iniciados em 2026-05-20, Teste 3 em 2026-05-24, Teste 4 em 2026-05-26, Testes 5 e 6 em 2026-05-27, Teste 7 em 2026-05-28. Banca: $10 nos Testes 1-6, **$100 no Teste 7** (escala 10× para amplificar a resolução dos stakes proporcionais — unit=$1.00, strong=$2.00, moderate=$1.00, weak=$0.50; isolamento contábil preservado pois cada DB tem banca própria).
 
 Para executar a rotina diária de todos os 7 testes de uma vez:
 
@@ -135,7 +135,7 @@ Sem flags, o comando: (a) descobre eventos uma única vez, (b) roda `run_analysi
 | **Teste 4** | `~/.pwa/paper_priceband.db` | `strongbuy_priceband` (STRONG BUY + 0.15 ≤ preço ≤ 0.85) | excluir extremos de mercado (preços de cauda têm pouca liquidez e EV teórico mais frágil) rende ROI/winrate melhor que Teste 2 puro |
 | **Teste 5** | `~/.pwa/paper_minpayoff.db` | `strongbuy_minpayoff` (STRONG BUY + upside ≥ $0.20/share) | filtrar pelo lucro absoluto por share (em vez do preço) ataca direto o problema do Teste 2: muitos wins de "near-certainty" com payoff baixo |
 | **Teste 6** | `~/.pwa/paper_evstrict.db` | `strongbuy_evstrict` (STRONG BUY + EV/ask ≥ 0.30) | dobrar o limiar `EV/ask` (default 0.15 é frouxo demais quando preços são altos) seleciona trades de qualidade superior; ataca a causa raiz do payoff assimétrico do Teste 2 |
-| **Teste 7** | `~/.pwa/paper_flattier.db` | `flat_tiered` (mesma seleção do Teste 1, mas sizing tier-flat anti-Kelly) | isolando o eixo *sizing*: stake fixo por tier de confiança (strong=2%/moderate=1%/weak=0.5% da banca inicial) supera Kelly fracionário? Hipótese: Kelly amplifica ruído do `p_model` em edges grandes e ilusórios; tier-flat só compensa concordância dos modelos |
+| **Teste 7** | `~/.pwa/paper_flattier.db` (banca $100) | `flat_tiered` (mesma seleção do Teste 1, mas sizing tier-flat anti-Kelly) | isolando o eixo *sizing*: stake fixo por tier de confiança (strong=2%/moderate=1%/weak=0.5% da banca inicial = $2.00/$1.00/$0.50) supera Kelly fracionário? Hipótese: Kelly amplifica ruído do `p_model` em edges grandes e ilusórios; tier-flat só compensa concordância dos modelos |
 
 Comparar winrate/ROI dos sete DBs após 30+ dias.
 

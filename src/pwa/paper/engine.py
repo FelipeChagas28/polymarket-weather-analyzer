@@ -8,6 +8,7 @@ from typing import Any
 
 from pwa.analysis.consensus import ConsensusRow
 from pwa.analysis.edge import EdgeRow
+from pwa.analysis.kelly import compute_stake_from_tiered_flat
 from pwa.paper import db as pdb
 from pwa.polymarket.gamma import GammaClient, event_markets, parse_market_outcomes
 
@@ -90,11 +91,14 @@ def place_bets_for_event(
         must offer at least $0.20 of upside; filters out near-certainty trades).
       - "strongbuy_evstrict" : "strongbuy" plus ev / side_price >= 0.30 (raises the
         EV/ask quality bar from the default 0.15; same edge requirement).
+      - "flat_tiered"        : same filter as 'auto', but stake is a flat tier off the
+        starting bankroll (strong=2%, moderate=1%, weak=0.5%) instead of Kelly.
     """
     placed: list[PlacedBet] = []
     consensus_by_label = _consensus_by_label(consensus_rows)
     bankroll = pdb.get_bankroll(conn)
     available = max(0.0, bankroll - reserved_stake(conn))
+    bankroll_start = float(pdb.get_state(conn, "bankroll_start") or bankroll)
 
     for er in edge_rows:
         if er.recommendation not in ("BUY", "STRONG BUY"):
@@ -125,7 +129,10 @@ def place_bets_for_event(
             if (er.ev / er.side_price) < 0.30:
                 continue
 
-        stake = compute_stake_from_kelly(bankroll, available, er.kelly.capped)
+        if mode == "flat_tiered":
+            stake = compute_stake_from_tiered_flat(bankroll_start, available, agreement)
+        else:
+            stake = compute_stake_from_kelly(bankroll, available, er.kelly.capped)
         if stake == 0.0:
             continue
         shares = stake / er.side_price

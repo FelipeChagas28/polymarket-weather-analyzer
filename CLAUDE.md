@@ -113,18 +113,19 @@ O DB fica em `~/.pwa/paper.db` (fora do repo). Cada aposta guarda preço de entr
 | `strongbuy_priceband` | `strongbuy` + `0.15 ≤ side_price ≤ 0.85` (exclui extremos de mercado) | teste 4 |
 | `strongbuy_minpayoff` | `strongbuy` + `(1 - side_price) ≥ 0.20` (exige upside mínimo $0.20/share) | teste 5 |
 | `strongbuy_evstrict` | `strongbuy` + `EV/ask ≥ 0.30` (dobra o limiar de qualidade do trade) | teste 6 |
+| `flat_tiered` | mesmo filtro do `auto`, mas stake é tier flat sobre banca **inicial** (strong=2%, moderate=1%, weak=0.5%) em vez de Kelly | teste 7 |
 
 ### Testes em andamento (paper-trading)
 
-Rodam **em paralelo**, cada um com banca e DB próprios e isolados — os seis podem conter apostas iguais. Testes 1 e 2 iniciados em 2026-05-20, Teste 3 em 2026-05-24, Teste 4 em 2026-05-26, Testes 5 e 6 em 2026-05-27, banca $10 cada.
+Rodam **em paralelo**, cada um com banca e DB próprios e isolados — os sete podem conter apostas iguais. Testes 1 e 2 iniciados em 2026-05-20, Teste 3 em 2026-05-24, Teste 4 em 2026-05-26, Testes 5 e 6 em 2026-05-27, Teste 7 em 2026-05-28, banca $10 cada.
 
-Para executar a rotina diária de todos os 6 testes de uma vez:
+Para executar a rotina diária de todos os 7 testes de uma vez:
 
 ```bash
 pwa paper run
 ```
 
-Sem flags, o comando: (a) descobre eventos uma única vez, (b) roda `run_analysis` uma única vez por evento (cache compartilhado entre DBs) e (c) chama resolve+place_bets nos 6 DBs em sequência, cada um aplicando seu próprio modo salvo. Para rodar só um DB específico, passe `--db` ou `--mode` explicitamente.
+Sem flags, o comando: (a) descobre eventos uma única vez, (b) roda `run_analysis` uma única vez por evento (cache compartilhado entre DBs) e (c) chama resolve+place_bets nos 7 DBs em sequência, cada um aplicando seu próprio modo salvo. Para rodar só um DB específico, passe `--db` ou `--mode` explicitamente.
 
 | Teste | DB | Modo | Hipótese |
 |---|---|---|---|
@@ -134,6 +135,7 @@ Sem flags, o comando: (a) descobre eventos uma única vez, (b) roda `run_analysi
 | **Teste 4** | `~/.pwa/paper_priceband.db` | `strongbuy_priceband` (STRONG BUY + 0.15 ≤ preço ≤ 0.85) | excluir extremos de mercado (preços de cauda têm pouca liquidez e EV teórico mais frágil) rende ROI/winrate melhor que Teste 2 puro |
 | **Teste 5** | `~/.pwa/paper_minpayoff.db` | `strongbuy_minpayoff` (STRONG BUY + upside ≥ $0.20/share) | filtrar pelo lucro absoluto por share (em vez do preço) ataca direto o problema do Teste 2: muitos wins de "near-certainty" com payoff baixo |
 | **Teste 6** | `~/.pwa/paper_evstrict.db` | `strongbuy_evstrict` (STRONG BUY + EV/ask ≥ 0.30) | dobrar o limiar `EV/ask` (default 0.15 é frouxo demais quando preços são altos) seleciona trades de qualidade superior; ataca a causa raiz do payoff assimétrico do Teste 2 |
+| **Teste 7** | `~/.pwa/paper_flattier.db` | `flat_tiered` (mesma seleção do Teste 1, mas sizing tier-flat anti-Kelly) | isolando o eixo *sizing*: stake fixo por tier de confiança (strong=2%/moderate=1%/weak=0.5% da banca inicial) supera Kelly fracionário? Hipótese: Kelly amplifica ruído do `p_model` em edges grandes e ilusórios; tier-flat só compensa concordância dos modelos |
 
-Comparar winrate/ROI dos seis DBs após 30+ dias.
+Comparar winrate/ROI dos sete DBs após 30+ dias.
 

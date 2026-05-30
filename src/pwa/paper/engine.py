@@ -13,6 +13,14 @@ from pwa.paper import db as pdb
 from pwa.polymarket.gamma import GammaClient, event_markets, parse_market_outcomes
 
 
+# Cidades com P/L > 0 no Teste 2 (strongbuy) em 2026-05-29. Snapshot fixo: o
+# Teste 8 (strongbuy_cities) testa se restringir a estas geografias melhora o ROI.
+TEST2_POSITIVE_CITIES: frozenset[str] = frozenset({
+    "madrid", "nyc", "seattle", "shanghai", "istanbul",
+    "hong-kong", "beijing", "paris", "singapore",
+})
+
+
 @dataclass(frozen=True, slots=True)
 class PlacedBet:
     id: int
@@ -93,6 +101,8 @@ def place_bets_for_event(
         EV/ask quality bar from the default 0.15; same edge requirement).
       - "flat_tiered"        : same filter as 'auto', but stake is a flat tier off the
         starting bankroll (strong=2%, moderate=1%, weak=0.5%) instead of Kelly.
+      - "strongbuy_cities"   : "strongbuy" plus city_key in TEST2_POSITIVE_CITIES (the
+        cities with positive P/L in Test 2 as of 2026-05-29); isolates city selection.
     """
     placed: list[PlacedBet] = []
     consensus_by_label = _consensus_by_label(consensus_rows)
@@ -127,6 +137,11 @@ def place_bets_for_event(
             if er.ev is None or er.side_price <= 0:
                 continue
             if (er.ev / er.side_price) < 0.30:
+                continue
+        if mode == "strongbuy_cities":
+            if er.recommendation != "STRONG BUY":
+                continue
+            if city_key not in TEST2_POSITIVE_CITIES:
                 continue
 
         if mode == "flat_tiered":

@@ -55,6 +55,18 @@ DEFAULT_TESTS: tuple[tuple[str, Path, str, str], ...] = (
         "strongbuy_evstrict",
         "STRONG BUY com EV/ask ≥ 0.30 (dobra o limiar de qualidade do trade).",
     ),
+    (
+        "Teste 7",
+        Path.home() / ".pwa" / "paper_flattier.db",
+        "flat_tiered",
+        "Mesma seleção do Teste 1, stake tier-flat anti-Kelly (strong/mod/weak = 2/1/0.5% banca inicial).",
+    ),
+    (
+        "Teste 8",
+        Path.home() / ".pwa" / "paper_cities.db",
+        "strongbuy_cities",
+        "Igual ao Teste 2, mas só cidades com P/L>0 no Teste 2 em 2026-05-29 (isola seleção de cidade).",
+    ),
 )
 
 

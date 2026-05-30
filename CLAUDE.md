@@ -114,18 +114,19 @@ O DB fica em `~/.pwa/paper.db` (fora do repo). Cada aposta guarda preço de entr
 | `strongbuy_minpayoff` | `strongbuy` + `(1 - side_price) ≥ 0.20` (exige upside mínimo $0.20/share) | teste 5 |
 | `strongbuy_evstrict` | `strongbuy` + `EV/ask ≥ 0.30` (dobra o limiar de qualidade do trade) | teste 6 |
 | `flat_tiered` | mesmo filtro do `auto`, mas stake é tier flat sobre banca **inicial** (strong=2%, moderate=1%, weak=0.5%) em vez de Kelly | teste 7 |
+| `strongbuy_cities` | `strongbuy` + `city_key ∈ {madrid, nyc, seattle, shanghai, istanbul, hong-kong, beijing, paris, singapore}` (cidades com P/L>0 no Teste 2 em 2026-05-29) | teste 8 |
 
 ### Testes em andamento (paper-trading)
 
-Rodam **em paralelo**, cada um com banca e DB próprios e isolados — os sete podem conter apostas iguais. Testes 1 e 2 iniciados em 2026-05-20, Teste 3 em 2026-05-24, Teste 4 em 2026-05-26, Testes 5 e 6 em 2026-05-27, Teste 7 em 2026-05-28. Banca: $10 nos Testes 1-6, **$100 no Teste 7** (escala 10× para amplificar a resolução dos stakes proporcionais — unit=$1.00, strong=$2.00, moderate=$1.00, weak=$0.50; isolamento contábil preservado pois cada DB tem banca própria).
+Rodam **em paralelo**, cada um com banca e DB próprios e isolados — os oito podem conter apostas iguais. Testes 1 e 2 iniciados em 2026-05-20, Teste 3 em 2026-05-24, Teste 4 em 2026-05-26, Testes 5 e 6 em 2026-05-27, Teste 7 em 2026-05-28, Teste 8 em 2026-05-29. Banca: $10 nos Testes 1-6 e 8, **$100 no Teste 7** (escala 10× para amplificar a resolução dos stakes proporcionais — unit=$1.00, strong=$2.00, moderate=$1.00, weak=$0.50; isolamento contábil preservado pois cada DB tem banca própria).
 
-Para executar a rotina diária de todos os 7 testes de uma vez:
+Para executar a rotina diária de todos os 8 testes de uma vez:
 
 ```bash
 pwa paper run
 ```
 
-Sem flags, o comando: (a) descobre eventos uma única vez, (b) roda `run_analysis` uma única vez por evento (cache compartilhado entre DBs) e (c) chama resolve+place_bets nos 7 DBs em sequência, cada um aplicando seu próprio modo salvo. Para rodar só um DB específico, passe `--db` ou `--mode` explicitamente.
+Sem flags, o comando: (a) descobre eventos uma única vez, (b) roda `run_analysis` uma única vez por evento (cache compartilhado entre DBs) e (c) chama resolve+place_bets nos 8 DBs em sequência, cada um aplicando seu próprio modo salvo. Para rodar só um DB específico, passe `--db` ou `--mode` explicitamente.
 
 | Teste | DB | Modo | Hipótese |
 |---|---|---|---|
@@ -136,6 +137,7 @@ Sem flags, o comando: (a) descobre eventos uma única vez, (b) roda `run_analysi
 | **Teste 5** | `~/.pwa/paper_minpayoff.db` | `strongbuy_minpayoff` (STRONG BUY + upside ≥ $0.20/share) | filtrar pelo lucro absoluto por share (em vez do preço) ataca direto o problema do Teste 2: muitos wins de "near-certainty" com payoff baixo |
 | **Teste 6** | `~/.pwa/paper_evstrict.db` | `strongbuy_evstrict` (STRONG BUY + EV/ask ≥ 0.30) | dobrar o limiar `EV/ask` (default 0.15 é frouxo demais quando preços são altos) seleciona trades de qualidade superior; ataca a causa raiz do payoff assimétrico do Teste 2 |
 | **Teste 7** | `~/.pwa/paper_flattier.db` (banca $100) | `flat_tiered` (mesma seleção do Teste 1, mas sizing tier-flat anti-Kelly) | isolando o eixo *sizing*: stake fixo por tier de confiança (strong=2%/moderate=1%/weak=0.5% da banca inicial = $2.00/$1.00/$0.50) supera Kelly fracionário? Hipótese: Kelly amplifica ruído do `p_model` em edges grandes e ilusórios; tier-flat só compensa concordância dos modelos |
+| **Teste 8** | `~/.pwa/paper_cities.db` | `strongbuy_cities` (Teste 2 restrito às cidades com P/L>0 em 2026-05-29) | isolando o eixo *seleção de cidade*: aplicar o filtro `strongbuy` apenas em geografias historicamente lucrativas (madrid, nyc, seattle, shanghai, istanbul, hong-kong, beijing, paris, singapore) melhora ROI/winrate vs Teste 2 puro? Whitelist é snapshot fixo; cidades perdedoras do Teste 2 (taipei, london, tokyo, seoul, dallas, atlanta, miami) ficam de fora |
 
-Comparar winrate/ROI dos sete DBs após 30+ dias.
+Comparar winrate/ROI dos oito DBs após 30+ dias.
 

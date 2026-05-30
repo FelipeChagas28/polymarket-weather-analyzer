@@ -261,6 +261,36 @@ def test_strongbuy_evstrict_rejects_low_ev_ratio(tmp_db):
         assert placed == []
 
 
+def test_strongbuy_cities_accepts_whitelisted_city(tmp_db):
+    """STRONG BUY in a Test-2 positive city (madrid) should pass."""
+    with pdb.session(tmp_db) as conn:
+        pdb.init_state(conn, bankroll=10.0)
+        placed = place_bets_for_event(
+            conn,
+            event_slug="evt-ct-1", event_title="t", city_key="madrid",
+            target_date=date(2026, 5, 27),
+            edge_rows=[_edge_row(recommendation="STRONG BUY")],
+            consensus_rows=[_consensus_row()],
+            mode="strongbuy_cities",
+        )
+        assert len(placed) == 1
+
+
+def test_strongbuy_cities_rejects_offlist_city(tmp_db):
+    """Same STRONG BUY in a city outside the whitelist (taipei) → skip."""
+    with pdb.session(tmp_db) as conn:
+        pdb.init_state(conn, bankroll=10.0)
+        placed = place_bets_for_event(
+            conn,
+            event_slug="evt-ct-2", event_title="t", city_key="taipei",
+            target_date=date(2026, 5, 27),
+            edge_rows=[_edge_row(recommendation="STRONG BUY")],
+            consensus_rows=[_consensus_row()],
+            mode="strongbuy_cities",
+        )
+        assert placed == []
+
+
 def test_reserved_stake_is_subtracted(tmp_db):
     """Second BUY should be sized off the bankroll minus previously reserved stake."""
     with pdb.session(tmp_db) as conn:

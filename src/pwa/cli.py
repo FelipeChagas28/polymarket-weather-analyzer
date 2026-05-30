@@ -332,7 +332,8 @@ def paper_init(
         help="auto | strict | strongbuy | strongbuy_priceband (STRONG BUY com 0.15<=preço<=0.85) | "
              "strongbuy_minpayoff (STRONG BUY com (1-preço)>=0.20) | "
              "strongbuy_evstrict (STRONG BUY com EV/ask>=0.30) | "
-             "flat_tiered (mesmo filtro do auto, stake tier strong=2%/moderate=1%/weak=0.5% da banca inicial)",
+             "flat_tiered (mesmo filtro do auto, stake tier strong=2%/moderate=1%/weak=0.5% da banca inicial) | "
+             "strongbuy_cities (STRONG BUY so nas cidades com P/L>0 no Teste 2)",
     ),
     db: str = _db_option(),
     force: bool = typer.Option(False, "--force", help="Sobrescreve state existente"),
@@ -341,7 +342,7 @@ def paper_init(
     valid_modes = (
         "auto", "strict", "strongbuy",
         "strongbuy_priceband", "strongbuy_minpayoff", "strongbuy_evstrict",
-        "flat_tiered",
+        "flat_tiered", "strongbuy_cities",
     )
     if mode not in valid_modes:
         console.print(f"[red]mode deve ser um de {valid_modes} (recebido: {mode!r})[/red]")
@@ -495,6 +496,7 @@ DEFAULT_PAPER_DBS: tuple[Path, ...] = (
     Path.home() / ".pwa" / "paper_minpayoff.db",
     Path.home() / ".pwa" / "paper_evstrict.db",
     Path.home() / ".pwa" / "paper_flattier.db",
+    Path.home() / ".pwa" / "paper_cities.db",
 )
 
 
@@ -664,7 +666,7 @@ def paper_resolve(
 def paper_run(
     db: str | None = typer.Option(None, "--db", help="Caminho do SQLite. Se omitido junto com --mode, roda os 7 testes em sequência."),
     days: int = typer.Option(2, "--days", help="Janela em dias à frente para incluir eventos"),
-    mode_override: str | None = typer.Option(None, "--mode", help="Sobrescreve o mode salvo (auto|strict|strongbuy|strongbuy_priceband|strongbuy_minpayoff|strongbuy_evstrict|flat_tiered)"),
+    mode_override: str | None = typer.Option(None, "--mode", help="Sobrescreve o mode salvo (auto|strict|strongbuy|strongbuy_priceband|strongbuy_minpayoff|strongbuy_evstrict|flat_tiered|strongbuy_cities)"),
     no_bias: bool = typer.Option(False, "--no-bias"),
     lookback: int = typer.Option(60, "--lookback"),
 ) -> None:
@@ -672,7 +674,7 @@ def paper_run(
     valid_modes = (
         "auto", "strict", "strongbuy",
         "strongbuy_priceband", "strongbuy_minpayoff", "strongbuy_evstrict",
-        "flat_tiered",
+        "flat_tiered", "strongbuy_cities",
     )
     if mode_override is not None and mode_override not in valid_modes:
         console.print(f"[red]--mode deve ser um de {valid_modes} (recebido: {mode_override!r})[/red]")
